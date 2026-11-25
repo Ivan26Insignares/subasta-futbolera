@@ -262,11 +262,20 @@ function hydratePhotos(root){
 
 // ---------- red P2P (PeerJS): el navegador del anfitrión hace de servidor ----------
 const PEER_PREFIX = 'subasta-futbolera-v1-';
-let peer=null, conn=null, HOST=null, reqs={}, reqId=0, retries=0;
+let peer=null, conn=null, HOST=null, reqs={}, reqId=0;
+let JOIN=null; // {code,name,pid,attempts,timer}
+
+// Servidores para atravesar routers/NAT (STUN) y para hacer de puente si la conexión directa falla (TURN)
+const ICE = { iceServers: [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
+]};
 
 function newPeer(id){
   return new Promise((res,rej)=>{
-    const p = id ? new Peer(id) : new Peer();
+    const opts = { debug: 1, config: ICE };
+    const p = id ? new Peer(id, opts) : new Peer(opts);
     const onErr = e => { p.off('open'); try{ p.destroy() }catch(x){} rej(e); };
     p.once('open', ()=>{ p.off('error', onErr); res(p); });
     p.once('error', onErr);
@@ -274,6 +283,37 @@ function newPeer(id){
 }
 function myName(){ const n=$('name').value.trim(); if(!n){toast('Pon tu nombre de mánager');return null} localStorage.setItem('sf_name',n); return n }
 function onState(s){ S=s; offset=S.serverNow-Date.now(); render(); }
+
+// ---- Latido en un Worker: los navegadores "duermen" los temporizadores de las pestañas en segundo plano,
+// y entonces el servidor de PeerJS olvidaba la sala. El Worker sigue latiendo aunque no mires la pestaña.
+const ticker = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(1),4000)'],{type:'text/javascript'})));
+ticker.onmessage = keepAlive;
+document.addEventListener('visibilitychange', keepAlive);
+let rebuilding=false;
+function keepAlive(){
+  if(!HOST) return;
+  try{ if(peer && peer.open && peer.socket) peer.socket.send({type:'HEARTBEAT'}); }catch(e){}
+  if(peer && peer.disconnected && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} }
+  else if((!peer || peer.destroyed) && !rebuilding) rebuildHostPeer();
+  updateHostStatus();
+}
+async function rebuildHostPeer(){
+  rebuilding=true;
+  try{ peer=await newPeer(PEER_PREFIX+ROOM); setupHostPeer(); }catch(e){ /* se reintenta en el siguiente latido */ }
+  rebuilding=false;
+}
+function setupHostPeer(){
+  peer.on('connection', hostConn);
+  peer.on('disconnected', ()=>{ updateHostStatus(); setTimeout(()=>{ if(peer && peer.disconnected && !peer.destroyed) try{ peer.reconnect() }catch(e){} },1000); });
+  peer.on('open', updateHostStatus);
+  peer.on('error', e=>{ console.warn('peer',e.type); updateHostStatus(); });
+  updateHostStatus();
+}
+function updateHostStatus(){
+  const el=$('hoststatus'); if(!el) return;
+  const ok = HOST && peer && peer.open && !peer.disconnected;
+  el.innerHTML = ok ? '🟢 Sala visible: tus amigos ya pueden entrar' : '🟠 Reconectando la sala…';
+}
 
 async function createRoom(){
   const n=myName(); if(!n) return;
@@ -284,9 +324,7 @@ async function createRoom(){
     catch(e){ if(e.type==='unavailable-id') continue; return toast('No se pudo conectar ('+e.type+'). ¿Tienes internet?'); }
     const r=SF_ENGINE.createRoom(code,n);
     HOST={room:r.room}; ROOM=code; PID=r.pid;
-    peer.on('connection', hostConn);
-    peer.on('disconnected', ()=>{ try{ peer.reconnect() }catch(e){} });
-    peer.on('error', e=>console.warn('peer',e.type));
+    setupHostPeer();
     SF_ENGINE.connectClient(HOST.room, PID, onState);
     return;
   }
@@ -320,44 +358,74 @@ function request(msg){
   });
 }
 
+// ---- Invitado ----
 async function joinRoom(){
   const n=myName(); if(!n) return;
   const c=$('joincode').value.trim(); if(!/^\d{5}$/.test(c)) return toast('El código tiene 5 dígitos');
-  toast('Buscando la sala…', true);
-  try{ peer=await newPeer(); }catch(e){ return toast('No se pudo conectar ('+e.type+'). ¿Tienes internet?'); }
-  peer.on('error', e=>{
-    if(e.type==='peer-unavailable'){
-      if(ROOM && retries<8){ retries++; setTimeout(()=>connectToHost(ROOM,n,PID),2500); }
-      else { toast('No existe la sala '+c+' (o el anfitrión cerró la pestaña)'); if(!ROOM) resetNet(); }
-    }
-  });
-  connectToHost(c,n,null);
+  startJoin(c,n,null);
 }
-
-function connectToHost(code,name,pid){
-  conn=peer.connect(PEER_PREFIX+code,{reliable:true});
-  conn.on('open', async()=>{
+async function startJoin(code,name,pid,rejoin){
+  resetNet();
+  if(rejoin) ROOM=code;
+  JOIN={code,name,pid,attempts:0,timer:null};
+  toast('Buscando la sala '+code+'…', true);
+  try{ peer=await newPeer(); }catch(e){ JOIN=null; ROOM=null; return toast('No se pudo conectar ('+e.type+'). ¿Tienes internet?'); }
+  peer.on('error', e=>{ if(e.type==='peer-unavailable') retryJoin('notfound'); });
+  peer.on('disconnected', ()=>{ if(peer && !peer.destroyed) try{ peer.reconnect() }catch(e){} });
+  connectToHost();
+}
+function retryJoin(reason){
+  if(!JOIN) return;
+  clearTimeout(JOIN.timer);
+  JOIN.attempts++;
+  const inGame = !!ROOM;
+  const max = inGame ? 30 : 6;
+  if(JOIN.attempts>max){
+    const msg = reason==='notfound'
+      ? `No encuentro la sala ${JOIN.code}. Revisa el código y que el anfitrión siga con la pestaña abierta.`
+      : 'La sala existe pero vuestras redes no se pueden conectar. Probad con otra WiFi o con datos móviles.';
+    resetNet(); S=null; sessionStorage.removeItem('sf_sess'); show('home'); toast(msg);
+    return;
+  }
+  toast((inGame?'Reconectando con el anfitrión':'Buscando la sala '+JOIN.code)+'… ('+JOIN.attempts+'/'+max+')', true);
+  JOIN.timer=setTimeout(connectToHost, 2500);
+}
+function connectToHost(){
+  if(!JOIN || !peer || peer.destroyed) return;
+  const J=JOIN;
+  if(conn) try{ conn.close() }catch(e){}
+  const c=peer.connect(PEER_PREFIX+J.code,{reliable:true});
+  conn=c;
+  clearTimeout(J.timer);
+  J.timer=setTimeout(()=>{ if(conn===c && !c.open) retryJoin('network'); },12000);
+  c.on('open', async()=>{
+    if(conn!==c) return;
+    clearTimeout(J.timer);
     try{
-      const r=await request({t:'join',name,pid});
-      ROOM=code; PID=r.pid; retries=0;
-      sessionStorage.setItem('sf_sess',JSON.stringify({room:code,pid:r.pid,name}));
-    }catch(e){ toast(e.message); resetNet(); show('home'); }
+      const r=await request({t:'join',name:J.name,pid:J.pid});
+      ROOM=J.code; PID=r.pid; J.pid=r.pid; J.attempts=0;
+      sessionStorage.setItem('sf_sess',JSON.stringify({room:J.code,pid:r.pid,name:J.name}));
+    }catch(e){ resetNet(); show('home'); toast(e.message); }
   });
-  conn.on('data', m=>{
+  c.on('data', m=>{
+    if(conn!==c) return;
     if(m.t==='state') onState(m.s);
     else if(m.t==='reply'){ const q=reqs[m.id]; if(q){ delete reqs[m.id]; m.error?q.rej(new Error(m.error)):q.res(m); } }
   });
-  conn.on('close', ()=>{
-    if(ROOM && retries<8){ retries++; toast('Conexión perdida, reintentando…'); setTimeout(()=>connectToHost(ROOM,name,PID),2500); }
-    else if(ROOM){ toast('Se perdió la conexión con el anfitrión'); leave(); }
-  });
+  c.on('close', ()=>{ if(conn===c && JOIN) retryJoin('closed'); });
+  c.on('error', ()=>{ if(conn===c && JOIN) retryJoin('network'); });
 }
 
 async function act(data){
   if(HOST){ const err=SF_ENGINE.handleAction(HOST.room,PID,data); if(err) toast(err); return; }
   try{ await request({t:'action',data}); }catch(e){ toast(e.message); }
 }
-function resetNet(){ const p=peer; ROOM=null; HOST=null; conn=null; peer=null; if(p) try{ p.destroy() }catch(e){} }
+function resetNet(){
+  if(JOIN) clearTimeout(JOIN.timer);
+  const p=peer, c=conn; JOIN=null; ROOM=null; HOST=null; conn=null; peer=null;
+  if(c) try{ c.close() }catch(e){}
+  if(p) try{ p.destroy() }catch(e){}
+}
 function leave(){
   if(HOST && S && S.phase!=='lobby' && !confirm('Eres el anfitrión: si sales, la partida se acaba para todos. ¿Salir?')) return;
   resetNet(); S=null; sessionStorage.removeItem('sf_sess'); show('home');
@@ -383,7 +451,8 @@ function renderLobby(){
   const link=location.origin+location.pathname+'?sala='+S.code;
   $('lhint').innerHTML=`Pasa este enlace a tus amigos:<br><b style="word-break:break-all">${esc(link)}</b><br>
     <button style="margin-top:8px" onclick="navigator.clipboard.writeText('${link}').then(()=>toast('¡Enlace copiado!',true))">📋 Copiar enlace</button>
-    ${S.hostId===PID?'<br><span style="font-size:12px">Eres el anfitrión: la partida vive en tu pestaña, no la cierres.</span>':''}`;
+    ${S.hostId===PID?'<br><b id="hoststatus" style="display:block;margin-top:8px"></b><span style="font-size:12px">Eres el anfitrión: la partida vive en tu pestaña, no la cierres.</span>':''}`;
+  updateHostStatus();
   const host = S.hostId===PID;
   $('lplayers').innerHTML = S.players.map(p=>`<div class="pitem"><span class="dot" style="background:${p.color}"></span>
     <b style="flex:1;text-align:left">${esc(p.name)} ${p.id===S.hostId?'👑':''} ${p.bot?'🤖':''} ${p.id===PID?'<span class="muted">(tú)</span>':''}</b>
@@ -561,9 +630,7 @@ if(salaParam && /^\d{5}$/.test(salaParam)){ $('joincode').value=salaParam; setTi
 // Si un invitado recarga la página, vuelve a entrar en su sala automáticamente
 const saved=JSON.parse(sessionStorage.getItem('sf_sess')||'null');
 if(saved && saved.name){
-  newPeer().then(p=>{ peer=p; ROOM=saved.room; PID=saved.pid;
-    peer.on('error',e=>{ if(e.type==='peer-unavailable'){ toast('La sala ya no existe'); resetNet(); sessionStorage.removeItem('sf_sess'); } });
-    connectToHost(saved.room,saved.name,saved.pid); }).catch(()=>{});
+  PID=saved.pid; startJoin(saved.room,saved.name,saved.pid,true);
 }
 </script>
 </body>
