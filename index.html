@@ -228,7 +228,18 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
 
 <div id="overlay" class="hidden"><div><div class="revtitle" id="revtitle"></div><div class="revs" id="revs"></div></div></div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+// Temporizadores y latido dentro de un Worker: así la subasta no se para aunque la pestaña esté en segundo plano
+(function(){
+  const w=new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(0),250)'],{type:'text/javascript'})));
+  const timers=new Map(); let next=1, beat=0;
+  window.SF_setTimeout=(fn,ms)=>{ const id=next++; timers.set(id,{fn,at:Date.now()+(ms||0)}); return id; };
+  window.SF_clearTimeout=id=>{ timers.delete(id); };
+  w.onmessage=()=>{ const now=Date.now(); for(const [id,t] of [...timers]) if(t.at<=now){ timers.delete(id); try{ t.fn() }catch(e){ console.error(e) } } if(++beat%16===0 && window.heartbeat) window.heartbeat(); };
+})();
+</script>
+
 <script src="players.js"></script>
 <script src="engine.js"></script>
 <script>
@@ -261,101 +272,95 @@ function hydratePhotos(root){
 }
 
 // ---------- red P2P (PeerJS): el navegador del anfitrión hace de servidor ----------
-const PEER_PREFIX = 'subasta-futbolera-v1-';
-let peer=null, conn=null, HOST=null, reqs={}, reqId=0;
-let JOIN=null; // {code,name,pid,attempts,timer}
+// ---------- red: mensajes a través de un servidor MQTT público (funciona en cualquier red, como una web normal) ----------
+const BROKERS = [
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://test.mosquitto.org:8081/mqtt',
+];
+const TOPIC = code => 'subasta-futbolera/v2/' + code;
+const CID = Math.random().toString(36).slice(2, 12);   // id de esta pestaña
+let HOST=null, reqs={}, reqId=0, JOIN=null, NET=null;  // NET = {client, url}
+let guests={};      // (anfitrión) cid -> {pid, cleanup, last}
+let lastHostMsg=0;  // (invitado) última vez que supimos del anfitrión
 
-// Servidores para atravesar routers/NAT (STUN) y para hacer de puente si la conexión directa falla (TURN)
-const ICE = { iceServers: [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
-  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
-  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
-]};
-
-function newPeer(id){
-  return new Promise((res,rej)=>{
-    const opts = { debug: 1, config: ICE };
-    const p = id ? new Peer(id, opts) : new Peer(opts);
-    const onErr = e => { p.off('open'); try{ p.destroy() }catch(x){} rej(e); };
-    p.once('open', ()=>{ p.off('error', onErr); res(p); });
-    p.once('error', onErr);
-  });
-}
 function myName(){ const n=$('name').value.trim(); if(!n){toast('Pon tu nombre de mánager');return null} localStorage.setItem('sf_name',n); return n }
 function onState(s){ S=s; offset=S.serverNow-Date.now(); render(); }
 
-// ---- Latido en un Worker: los navegadores "duermen" los temporizadores de las pestañas en segundo plano,
-// y entonces el servidor de PeerJS olvidaba la sala. El Worker sigue latiendo aunque no mires la pestaña.
-const ticker = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(1),4000)'],{type:'text/javascript'})));
-ticker.onmessage = keepAlive;
-document.addEventListener('visibilitychange', keepAlive);
-let rebuilding=false;
-function keepAlive(){
-  if(!HOST) return;
-  try{ if(peer && peer.open && peer.socket) peer.socket.send({type:'HEARTBEAT'}); }catch(e){}
-  if(peer && peer.disconnected && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} }
-  else if((!peer || peer.destroyed) && !rebuilding) rebuildHostPeer();
-  updateHostStatus();
+// Conecta al primer servidor MQTT que responda
+function connectBroker(i=0){
+  return new Promise((res,rej)=>{
+    if(i>=BROKERS.length) return rej(new Error('No se pudo conectar al servidor de salas. ¿Tienes internet?'));
+    const url=BROKERS[i];
+    const client=mqtt.connect(url,{clientId:'sf_'+CID+'_'+i, clean:true, connectTimeout:7000, reconnectPeriod:2000, keepalive:30});
+    let done=false;
+    const fail=()=>{ if(done) return; done=true; try{ client.end(true) }catch(e){} connectBroker(i+1).then(res,rej); };
+    client.once('connect',()=>{ if(done) return; done=true; res({client,url}); });
+    client.once('error',fail);
+    setTimeout(fail,8000);
+  });
 }
-async function rebuildHostPeer(){
-  rebuilding=true;
-  try{ peer=await newPeer(PEER_PREFIX+ROOM); setupHostPeer(); }catch(e){ /* se reintenta en el siguiente latido */ }
-  rebuilding=false;
-}
-function setupHostPeer(){
-  peer.on('connection', hostConn);
-  peer.on('disconnected', ()=>{ updateHostStatus(); setTimeout(()=>{ if(peer && peer.disconnected && !peer.destroyed) try{ peer.reconnect() }catch(e){} },1000); });
-  peer.on('open', updateHostStatus);
-  peer.on('error', e=>{ console.warn('peer',e.type); updateHostStatus(); });
-  updateHostStatus();
-}
-function updateHostStatus(){
-  const el=$('hoststatus'); if(!el) return;
-  const ok = HOST && peer && peer.open && !peer.disconnected;
-  el.innerHTML = ok ? '🟢 Sala visible: tus amigos ya pueden entrar' : '🟠 Reconectando la sala…';
-}
+function send(topic,obj){ if(NET) NET.client.publish(topic, JSON.stringify(obj), {qos:1}); }
+function parse(p){ try{ return JSON.parse(p.toString()) }catch(e){ return null } }
 
+// ---- Anfitrión ----
 async function createRoom(){
   const n=myName(); if(!n) return;
   toast('Creando sala…', true);
-  for(let i=0;i<6;i++){
-    const code=String(10000+Math.floor(Math.random()*90000));
-    try{ peer=await newPeer(PEER_PREFIX+code); }
-    catch(e){ if(e.type==='unavailable-id') continue; return toast('No se pudo conectar ('+e.type+'). ¿Tienes internet?'); }
-    const r=SF_ENGINE.createRoom(code,n);
-    HOST={room:r.room}; ROOM=code; PID=r.pid;
-    setupHostPeer();
-    SF_ENGINE.connectClient(HOST.room, PID, onState);
-    return;
+  try{ NET=await connectBroker(); }catch(e){ return toast(e.message); }
+  // Elegimos un código que no esté usando otra sala
+  let code=null;
+  for(let i=0;i<5 && !code;i++){
+    const c=String(10000+Math.floor(Math.random()*90000));
+    if(!(await roomExists(c))) code=c;
   }
-  toast('No se pudo crear la sala, inténtalo otra vez');
+  if(!code){ resetNet(); return toast('No se pudo crear la sala, inténtalo otra vez'); }
+  const r=SF_ENGINE.createRoom(code,n);
+  HOST={room:r.room}; ROOM=code; PID=r.pid; guests={};
+  const T=TOPIC(code);
+  NET.client.subscribe([T+'/up', T+'/probe'], {qos:1});
+  NET.client.on('message', hostMessage);
+  NET.client.on('connect', ()=>{ NET.client.subscribe([T+'/up', T+'/probe'], {qos:1}); updateHostStatus(); });
+  NET.client.on('offline', updateHostStatus); NET.client.on('close', updateHostStatus);
+  SF_ENGINE.connectClient(HOST.room, PID, onState);
+  updateHostStatus();
 }
-
-function hostConn(c){
-  let pid=null, cleanup=null;
-  const drop=()=>{ if(cleanup) cleanup(); cleanup=null; };
-  c.on('data', m=>{
-    if(!m||typeof m!=='object') return;
-    if(m.t==='join'){
-      const j=SF_ENGINE.joinRoom(HOST.room, String(m.name||'Jugador'), m.pid);
-      if(j.error) return c.send({t:'reply',id:m.id,error:j.error});
-      pid=j.pid; c.send({t:'reply',id:m.id,pid});
-      drop(); cleanup=SF_ENGINE.connectClient(HOST.room, pid, s=>{ if(c.open) c.send({t:'state',s}); });
-    } else if(m.t==='action'){
-      const err = pid ? SF_ENGINE.handleAction(HOST.room, pid, m.data||{}) : 'No estás en la sala';
-      c.send({t:'reply',id:m.id,error:err});
-    }
+function roomExists(code){
+  return new Promise(res=>{
+    const T=TOPIC(code), c=NET.client, nonce=Math.random().toString(36).slice(2);
+    const h=(topic,p)=>{ const m=parse(p); if(topic===T+'/probe-ack' && m && m.nonce===nonce){ c.removeListener('message',h); res(true); } };
+    c.on('message',h);
+    c.subscribe(T+'/probe-ack',{qos:1},()=>{ send(T+'/probe',{nonce}); });
+    setTimeout(()=>{ c.removeListener('message',h); c.unsubscribe(T+'/probe-ack'); res(false); },1500);
   });
-  c.on('close', drop); c.on('error', drop);
 }
-
-function request(msg){
-  return new Promise((res,rej)=>{
-    if(!conn||!conn.open) return rej(new Error('Sin conexión con el anfitrión'));
-    const id=++reqId; reqs[id]={res,rej};
-    conn.send({...msg,id});
-    setTimeout(()=>{ if(reqs[id]){ delete reqs[id]; rej(new Error('El anfitrión no responde')); } },10000);
-  });
+function hostMessage(topic,p){
+  if(!HOST) return;
+  const T=TOPIC(ROOM), m=parse(p); if(!m) return;
+  if(topic===T+'/probe'){ send(T+'/probe-ack',{nonce:m.nonce}); return; }
+  if(topic!==T+'/up' || !m.cid) return;
+  const to=T+'/to/'+m.cid;
+  const g=guests[m.cid];
+  if(g) g.last=Date.now();
+  if(m.t==='join'){
+    const j=SF_ENGINE.joinRoom(HOST.room, String(m.name||'Jugador').slice(0,16), m.pid);
+    if(j.error) return send(to,{t:'reply',id:m.id,error:j.error});
+    if(g && g.cleanup) g.cleanup();
+    send(to,{t:'reply',id:m.id,pid:j.pid});
+    guests[m.cid]={pid:j.pid,last:Date.now(),cleanup:SF_ENGINE.connectClient(HOST.room,j.pid,s=>send(to,{t:'state',s}))};
+  } else if(m.t==='action'){
+    const err = g ? SF_ENGINE.handleAction(HOST.room, g.pid, m.data||{}) : 'No estás en la sala';
+    send(to,{t:'reply',id:m.id,error:err});
+  } else if(m.t==='ping'){
+    send(to,{t:'pong', known:!!g});
+  } else if(m.t==='bye'){
+    if(g && g.cleanup) g.cleanup(); delete guests[m.cid];
+  }
+}
+function updateHostStatus(){
+  const el=$('hoststatus'); if(!el) return;
+  const ok = HOST && NET && NET.client.connected;
+  el.innerHTML = ok ? '🟢 Sala visible: tus amigos ya pueden entrar' : '🟠 Reconectando la sala…';
 }
 
 // ---- Invitado ----
@@ -366,54 +371,44 @@ async function joinRoom(){
 }
 async function startJoin(code,name,pid,rejoin){
   resetNet();
-  if(rejoin) ROOM=code;
-  JOIN={code,name,pid,attempts:0,timer:null};
+  JOIN={code,name,pid};
   toast('Buscando la sala '+code+'…', true);
-  try{ peer=await newPeer(); }catch(e){ JOIN=null; ROOM=null; return toast('No se pudo conectar ('+e.type+'). ¿Tienes internet?'); }
-  peer.on('error', e=>{ if(e.type==='peer-unavailable') retryJoin('notfound'); });
-  peer.on('disconnected', ()=>{ if(peer && !peer.destroyed) try{ peer.reconnect() }catch(e){} });
-  connectToHost();
-}
-function retryJoin(reason){
-  if(!JOIN) return;
-  clearTimeout(JOIN.timer);
-  JOIN.attempts++;
-  const inGame = !!ROOM;
-  const max = inGame ? 30 : 6;
-  if(JOIN.attempts>max){
-    const msg = reason==='notfound'
-      ? `No encuentro la sala ${JOIN.code}. Revisa el código y que el anfitrión siga con la pestaña abierta.`
-      : 'La sala existe pero vuestras redes no se pueden conectar. Probad con otra WiFi o con datos móviles.';
-    resetNet(); S=null; sessionStorage.removeItem('sf_sess'); show('home'); toast(msg);
-    return;
-  }
-  toast((inGame?'Reconectando con el anfitrión':'Buscando la sala '+JOIN.code)+'… ('+JOIN.attempts+'/'+max+')', true);
-  JOIN.timer=setTimeout(connectToHost, 2500);
-}
-function connectToHost(){
-  if(!JOIN || !peer || peer.destroyed) return;
-  const J=JOIN;
-  if(conn) try{ conn.close() }catch(e){}
-  const c=peer.connect(PEER_PREFIX+J.code,{reliable:true});
-  conn=c;
-  clearTimeout(J.timer);
-  J.timer=setTimeout(()=>{ if(conn===c && !c.open) retryJoin('network'); },12000);
-  c.on('open', async()=>{
-    if(conn!==c) return;
-    clearTimeout(J.timer);
+  // Probamos los servidores en orden hasta dar con el de la sala
+  for(let i=0;i<BROKERS.length;i++){
+    if(!JOIN) return;
+    try{ NET=await connectBroker(i); }catch(e){ break; }
+    i=BROKERS.indexOf(NET.url);
+    const T=TOPIC(code);
+    NET.client.subscribe(T+'/to/'+CID,{qos:1});
+    NET.client.on('message',(topic,p)=>guestMessage(topic,p));
+    NET.client.on('connect',()=>NET.client.subscribe(T+'/to/'+CID,{qos:1}));
     try{
-      const r=await request({t:'join',name:J.name,pid:J.pid});
-      ROOM=J.code; PID=r.pid; J.pid=r.pid; J.attempts=0;
-      sessionStorage.setItem('sf_sess',JSON.stringify({room:J.code,pid:r.pid,name:J.name}));
-    }catch(e){ resetNet(); show('home'); toast(e.message); }
+      const r=await request({t:'join',name,pid},5000);
+      ROOM=code; PID=r.pid; JOIN.pid=r.pid; lastHostMsg=Date.now();
+      sessionStorage.setItem('sf_sess',JSON.stringify({room:code,pid:r.pid,name}));
+      return;
+    }catch(e){
+      if(e.message!=='timeout'){ resetNet(); show('home'); return toast(e.message); }
+      try{ NET.client.end(true) }catch(x){} NET=null;
+    }
+  }
+  resetNet(); if(rejoin){ S=null; sessionStorage.removeItem('sf_sess'); show('home'); }
+  toast(`No encuentro la sala ${code}. Revisa el código y que el anfitrión siga con la pestaña abierta.`);
+}
+function guestMessage(topic,p){
+  const m=parse(p); if(!m) return;
+  lastHostMsg=Date.now();
+  if(m.t==='state') onState(m.s);
+  else if(m.t==='reply'){ const q=reqs[m.id]; if(q){ delete reqs[m.id]; clearTimeout(q.timer); m.error?q.rej(new Error(m.error)):q.res(m); } }
+  else if(m.t==='pong' && !m.known && JOIN && ROOM){ request({t:'join',name:JOIN.name,pid:JOIN.pid}).catch(()=>{}); }
+}
+function request(msg,timeout=10000){
+  return new Promise((res,rej)=>{
+    if(!NET) return rej(new Error('Sin conexión'));
+    const id=++reqId;
+    reqs[id]={res,rej,timer:setTimeout(()=>{ if(reqs[id]){ delete reqs[id]; rej(new Error(timeout<10000?'timeout':'El anfitrión no responde')); } },timeout)};
+    send(TOPIC(JOIN?JOIN.code:ROOM)+'/up',{...msg,id,cid:CID});
   });
-  c.on('data', m=>{
-    if(conn!==c) return;
-    if(m.t==='state') onState(m.s);
-    else if(m.t==='reply'){ const q=reqs[m.id]; if(q){ delete reqs[m.id]; m.error?q.rej(new Error(m.error)):q.res(m); } }
-  });
-  c.on('close', ()=>{ if(conn===c && JOIN) retryJoin('closed'); });
-  c.on('error', ()=>{ if(conn===c && JOIN) retryJoin('network'); });
 }
 
 async function act(data){
@@ -421,11 +416,23 @@ async function act(data){
   try{ await request({t:'action',data}); }catch(e){ toast(e.message); }
 }
 function resetNet(){
-  if(JOIN) clearTimeout(JOIN.timer);
-  const p=peer, c=conn; JOIN=null; ROOM=null; HOST=null; conn=null; peer=null;
-  if(c) try{ c.close() }catch(e){}
-  if(p) try{ p.destroy() }catch(e){}
+  if(NET && JOIN && ROOM) try{ send(TOPIC(ROOM)+'/up',{t:'bye',cid:CID}); }catch(e){}
+  const n=NET; JOIN=null; ROOM=null; HOST=null; NET=null; guests={};
+  if(n) setTimeout(()=>{ try{ n.client.end(true) }catch(e){} },300);
 }
+
+// ---- Latido (en un Worker para que no se duerma en segundo plano) ----
+function heartbeat(){
+  if(HOST){
+    const now=Date.now();
+    for(const [cid,g] of Object.entries(guests)) if(now-g.last>25000){ if(g.cleanup) g.cleanup(); delete guests[cid]; }
+    updateHostStatus();
+  } else if(ROOM && NET && JOIN){
+    send(TOPIC(ROOM)+'/up',{t:'ping',cid:CID});
+    if(Date.now()-lastHostMsg>20000) toast('Sin noticias del anfitrión… esperando', true);
+  }
+}
+
 function leave(){
   if(HOST && S && S.phase!=='lobby' && !confirm('Eres el anfitrión: si sales, la partida se acaba para todos. ¿Salir?')) return;
   resetNet(); S=null; sessionStorage.removeItem('sf_sess'); show('home');

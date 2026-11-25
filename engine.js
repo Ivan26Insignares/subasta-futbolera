@@ -2,6 +2,9 @@
 (function (root) {
 const DATA = (typeof module !== 'undefined' && module.exports) ? require('./players.js') : root.SF_DATA;
 const { POSITIONS, PLAYERS, PRICE_RANGES } = DATA;
+// Temporizadores: en el navegador se usan unos que no se duermen con la pestaña en segundo plano
+const setT = (root.SF_setTimeout && root.SF_setTimeout.bind(root)) || setTimeout;
+const clearT = (x) => ((root.SF_clearTimeout || clearTimeout)(x));
 const BUDGET = 1000;       // millones
 const RESERVE = 1;         // millones reservados por cada posición pendiente
 const MAX_PLAYERS = 4;
@@ -80,9 +83,9 @@ function broadcast(r) {
 }
 
 function clearTimers(r) {
-  if (r.timer) clearTimeout(r.timer);
+  if (r.timer) clearT(r.timer);
   r.timer = null;
-  r.botTimers.forEach(clearTimeout);
+  r.botTimers.forEach(clearT);
   r.botTimers = [];
 }
 
@@ -133,7 +136,7 @@ function nextLot(r) {
     r.phase = 'reveal';
     r.reveal = { id: uid(), kind: 'forced', items };
     broadcast(r);
-    r.timer = setTimeout(() => { r.phase = 'auction'; r.posIdx++; nextLot(r); }, REVEAL_TIME + 1000);
+    r.timer = setT(() => { r.phase = 'auction'; r.posIdx++; nextLot(r); }, REVEAL_TIME + 1000);
     return;
   }
 
@@ -149,8 +152,8 @@ function nextLot(r) {
 }
 
 function scheduleEnd(r) {
-  if (r.timer) clearTimeout(r.timer);
-  r.timer = setTimeout(() => endLot(r), Math.max(0, r.deadline - Date.now()));
+  if (r.timer) clearT(r.timer);
+  r.timer = setT(() => endLot(r), Math.max(0, r.deadline - Date.now()));
 }
 
 function sell(r, l, p, price) {
@@ -176,7 +179,7 @@ function endLot(r) {
   }
   r.phase = 'reveal';
   broadcast(r);
-  r.timer = setTimeout(() => nextLot(r), REVEAL_TIME);
+  r.timer = setT(() => nextLot(r), REVEAL_TIME);
 }
 
 function eligible(r, p) {
@@ -227,10 +230,10 @@ function doPass(r, p) {
 
 // ---------- bots ----------
 function scheduleBots(r) {
-  r.botTimers.forEach(clearTimeout); r.botTimers = [];
+  r.botTimers.forEach(clearT); r.botTimers = [];
   const lotId = r.cur && r.cur.id;
   for (const b of r.players.filter((p) => p.bot)) {
-    r.botTimers.push(setTimeout(() => {
+    r.botTimers.push(setT(() => {
       if (!r.cur || r.cur.id !== lotId || r.phase !== 'auction') return;
       if (r.highBidder === b.id || r.passes.has(b.id)) return;
       if (!eligible(r, b)) return doPass(r, b);
