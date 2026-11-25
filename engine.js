@@ -5,6 +5,7 @@ const { POSITIONS, PLAYERS, PRICE_RANGES } = DATA;
 // Temporizadores: en el navegador se usan unos que no se duermen con la pestaña en segundo plano
 const setT = (root.SF_setTimeout && root.SF_setTimeout.bind(root)) || setTimeout;
 const clearT = (x) => ((root.SF_clearTimeout || clearTimeout)(x));
+const PRICES = [20, 50, 80, 110, 140]; // precios de salida posibles
 const BUDGET = 1000;       // millones
 const RESERVE = 1;         // millones reservados por cada posición pendiente
 const MAX_PLAYERS = 4;
@@ -72,6 +73,7 @@ function publicState(r, pid) {
     cur: r.cur ? { id: r.cur.id, pos: r.cur.data.pos, nat: r.cur.data.nat, attr: r.cur.data.attr, base: r.cur.base, num: r.lots[curPos(r)].indexOf(r.cur) + 1 } : null,
     highBid: r.highBid, highBidder: r.highBidder, deadline: r.deadline, passes: [...r.passes],
     reveal: r.reveal, log: r.log.slice(-25), results: r.results,
+    votes: r.votes || null, tally: (r.phase === 'voting' && r.votes) ? tallyVotes(r) : null,
   };
 }
 
@@ -94,12 +96,14 @@ function startGame(r) {
   r.posIdx = 0; r.results = null; r.reveal = null; r.log = [];
   for (const p of r.players) { p.budget = BUDGET; p.team = {}; }
   for (const pos of POSITIONS) {
-    // De los 50 de la posición, sale uno al azar de cada tipo (troll, leyenda, normal, bueno, prime)
+    // De los jugadores de la posición, sale uno al azar de cada tipo (troll, leyenda, normal, bueno, prime)
     const five = ['troll', 'legend', 'normal', 'good', 'prime'].map((t) => pick(PLAYERS[pos.key].filter((d) => d.tier === t)));
-    r.lots[pos.key] = shuffle(five).map((d) => {
-      const [a, b] = PRICE_RANGES[d.tier];
-      return { id: uid(), data: { ...d, pos: pos.key }, base: Math.round(rnd(a, b) / 5) * 5, status: 'pending', owner: null, price: 0 };
-    });
+    // Precios de salida: en cada posición están siempre los 5 valores, repartidos al azar
+    // (así siempre hay uno de 20M para quien vaya justo de dinero)
+    const prices = shuffle(PRICES);
+    r.lots[pos.key] = shuffle(five).map((d, i) => (
+      { id: uid(), data: { ...d, pos: pos.key }, base: prices[i], status: 'pending', owner: null, price: 0 }
+    ));
   }
   r.phase = 'auction';
   log(r, '🔨 ¡Empieza la subasta! 1000M para cada mánager.');
@@ -249,215 +253,51 @@ function scheduleBots(r) {
   }
 }
 
-// ---------- partido ----------
-const SHOOT_W = { DC: 4, EI: 3, ED: 3, MCO: 2.5, MC: 1.2, MCD: 0.5, LD: 0.6, LI: 0.6, DFD: 0.5, DFI: 0.5, POR: 0 };
-const ASSIST_W = { DC: 1.5, EI: 3, ED: 3, MCO: 3.5, MC: 2.5, MCD: 1, LD: 1.5, LI: 1.5, DFD: 0.3, DFI: 0.3, POR: 0.05 };
-
-const TROLL_LINES = {
-  'Loris Karius': '🤡 Karius saca con la mano... ¡contra la espalda de un rival! Gol a lo Kiev.',
-  'Phil Jones': '🤡 Phil Jones pone una de sus caras míticas y la mete en su propia portería.',
-  'Harry Maguire': '🤡 Maguire intenta un pase de 60 metros... directo al delantero rival. Gol.',
-  'Douglas Pereira': '🤡 Douglas aparece en la jugada. Nadie sabe qué hace ahí, ni él. Gol rival.',
-  'Junior Firpo': '🤡 Junior Firpo rompe el fuera de juego... a favor del rival. Gol.',
-  'Alex Song': '🤡 Alex Song pierde el balón mientras saluda a la grada como si fuera el banquillo.',
-  'Arthur Melo': '🤡 Arthur se queda pensando en su partida de la Play y le roban la cartera. Gol.',
-  'Kerlon': '🤡 Kerlon intenta el regate de la foca en su propia área... y la foca se escapa. Gol.',
-  'Bebé': '🤡 Bebé prueba una chilena en su propio área. No sale bien.',
-  'Jesé Rodríguez': '🤡 Jesé se para a grabar un videoclip en mitad de la contra. Gol rival.',
-  'Nicklas Bendtner': '🤡 Lord Bendtner falla a puerta vacía y la contra acaba en gol.',
-};
-const TROLL_FUNNY = [
-  (n) => `🤡 ${n} se tropieza con el balón él solito. Aplausos irónicos en la grada.`,
-  (n) => `🤡 ${n} pide el balón, lo recibe... y lo saca de banda sin querer.`,
-  (n) => `🤡 ${n} celebra un gol que era fuera de juego. Muy fuera.`,
-];
-const TROLL_HERO = (n) => `🤡➡️⚽ ¡NO PUEDE SER! ¡${n} marca un golazo! Hoy es su día.`;
-
-const MAGIC_LINES = {
-  'Lionel Messi': () => '✨ Messi arranca desde medio campo, deja a cinco rivales sentados y marca. Imposible.',
-  'Ronaldo Nazário': () => '✨ El Fenómeno hace la elástica, regatea al portero y la empuja. R9 puro.',
-  'Ronaldinho': () => '✨ Ronaldinho mira a un lado, pasa al otro y él mismo remata. ¡Magia!',
-  'Zinedine Zidane': () => '✨ Zidane engancha una volea como en Glasgow. Obra de arte.',
-  'Roberto Carlos': () => '✨ Falta lejana. Roberto Carlos coge carrerilla... ¡la curva desafía a Newton!',
-  'Carles Puyol': () => '✨ Puyol sube al córner y cabecea como en Durban. ¡GOL!',
-  'Paolo Maldini': (a) => `✨ Maldini roba sin tocar al rival, sale jugando y ${a} culmina la contra.`,
-  'Xavi Hernández': (a) => `✨ Xavi da un pase que nadie más veía. ${a} solo tiene que empujarla.`,
-  'Sergio Busquets': (a) => `✨ Busquets sale de la presión de tres rivales con un giro. Gol de ${a}.`,
-  'Cafu': (a) => `✨ Cafu se recorre la banda entera y la pone en la cabeza de ${a}. ¡Gol!`,
-};
-const SELF_SCORE_LEGENDS = ['Lionel Messi', 'Ronaldo Nazário', 'Ronaldinho', 'Zinedine Zidane', 'Roberto Carlos', 'Carles Puyol'];
-
-const CLUTCH_LINES = {
-  'Mario Götze': '🏆 ¡GÖTZE! Control con el pecho y volea. ¡Como en Maracaná 2014!',
-  'Éder': '🏆 ¡ÉDER se saca un zapatazo desde fuera del área! ¡Como en Saint-Denis!',
-  'Mikel Merino': '🏆 ¡MERINO se eleva en el último suspiro! ¡Como contra Alemania!',
-  'Divock Origi': '🏆 ¡ORIGI aparece de la nada! ¡Como contra el Barça en Anfield!',
-  'Marco Materazzi': '🏆 ¡Materazzi de cabeza! Berlín 2006 revive.',
-  'Benjamin Pavard': '🏆 ¡Volea de Pavard con el exterior! Kazán 2018 otra vez.',
-  'Marcos Senna': '🏆 ¡Marcos Senna desde 30 metros! Ancla y cañón.',
-  'Ricardo Quaresma': '🏆 ¡Trivela imposible de Quaresma! Toca la escuadra y entra.',
-  'Joan Capdevila': '🏆 ¡Capdevila se incorpora al ataque y la clava! Nadie lo esperaba.',
-  'Carlos Marchena': '🏆 ¡Marchena, el amuleto, empata de cabeza en un córner!',
-};
-
-const GOAL_T = [
-  (s, a) => `⚽ ¡GOOOL de ${s}! Asistencia de ${a}.`,
-  (s) => `⚽ ¡${s} la clava por la escuadra!`,
-  (s, a) => `⚽ ${s} define con frialdad tras un pase de ${a}.`,
-  (s) => `⚽ ¡Golazo de ${s}! El estadio se viene abajo.`,
-  (s, a) => `⚽ ${a} centra y ${s} cabecea a la red.`,
-];
-const SAVE_T = [(g, s) => `🧤 ¡Paradón de ${g} a disparo de ${s}!`, (g, s) => `🧤 ${g} vuela y saca el balón que buscaba ${s}.`];
-const MISS_T = [(s) => `😬 ${s} la manda a las nubes.`, (s) => `💨 ${s} la estrella en el poste.`, (s) => `😩 ${s} se queda solo... y falla.`];
-
-function weighted(list, wfn) {
-  const ws = list.map(wfn); const tot = ws.reduce((a, b) => a + b, 0);
-  let x = Math.random() * tot;
-  for (let i = 0; i < list.length; i++) { x -= ws[i]; if (x <= 0) return list[i]; }
-  return list[list.length - 1];
-}
-
-function buildSide(p) {
-  const list = POSITIONS.map((x) => ({ ...p.team[x.key].data, pos: x.key }));
-  const g = (k) => list.find((x) => x.pos === k).ovr;
-  return {
-    p, list, gk: list.find((x) => x.pos === 'POR'),
-    s: { gk: g('POR'), def: avg(['LD', 'DFD', 'DFI', 'LI'].map(g)), mid: avg(['MCD', 'MC', 'MCO'].map(g)), att: avg(['EI', 'ED', 'DC'].map(g)) },
-    mult: 1,
-  };
-}
-
-function simulate(pA, pB, needWinner) {
-  const T = [buildSide(pA), buildSide(pB)];
-  const ev = []; const sc = [0, 0];
-  const add = (min, team, type, text, extra = {}) => ev.push({ min, team, type, text, ...extra });
-  const shooter = (t, excl) => weighted(T[t].list.filter((x) => x.name !== excl), (x) => SHOOT_W[x.pos] * Math.pow(x.ovr / 80, 3));
-  const assister = (t, excl) => weighted(T[t].list.filter((x) => x.name !== excl), (x) => ASSIST_W[x.pos] * Math.pow(x.ovr / 80, 2));
-
-  // Eventos especiales programados
-  const specials = [];
-  for (let t = 0; t < 2; t++) {
-    for (const pl of T[t].list) {
-      if (pl.tier === 'troll') {
-        const r = Math.random();
-        if (r < 0.25) specials.push({ min: rint(4, 88), t, kind: 'trollGoal', pl });
-        else if (r < 0.55) specials.push({ min: rint(4, 88), t, kind: 'trollFunny', pl });
-        else if (r < 0.62 && pl.pos !== 'POR') specials.push({ min: rint(4, 88), t, kind: 'trollHero', pl });
-      }
-      if (pl.tier === 'legend' && Math.random() < 0.2) specials.push({ min: rint(6, 86), t, kind: 'magic', pl });
-    }
-  }
-  // Easter egg: Materazzi vs Zidane
-  for (let t = 0; t < 2; t++) {
-    const o = 1 - t;
-    if (T[t].list.some((x) => x.name === 'Marco Materazzi') && T[o].list.some((x) => x.name === 'Zinedine Zidane') && Math.random() < 0.6) {
-      specials.push({ min: rint(55, 85), t, kind: 'zizou' });
-    }
-  }
-
-  let zizouOut = [false, false];
-  for (let min = 1; min <= 93; min++) {
-    for (const sp of specials.filter((x) => x.min === min)) {
-      const t = sp.t, o = 1 - t;
-      if (sp.kind === 'trollGoal') { sc[o]++; add(min, o, 'goal', TROLL_LINES[sp.pl.name] || `🤡 ${sp.pl.name} regala un gol al rival.`, { troll: true, scorer: 'Regalo de ' + sp.pl.name }); }
-      if (sp.kind === 'trollFunny') add(min, t, 'troll', pick(TROLL_FUNNY)(sp.pl.name));
-      if (sp.kind === 'trollHero') { sc[t]++; add(min, t, 'goal', TROLL_HERO(sp.pl.name), { scorer: sp.pl.name }); }
-      if (sp.kind === 'magic') {
-        if (sp.pl.pos === 'POR') {
-          add(min, t, 'save', sp.pl.name === 'Iker Casillas' ? '✨ San Iker hace una parada imposible con el pie. ¡Milagro!' : `✨ ${sp.pl.name} hace una parada de leyenda. ¡Imposible!`);
-          continue;
-        }
-        const attacker = ['DC', 'EI', 'ED', 'MCO'].includes(sp.pl.pos);
-        const f = MAGIC_LINES[sp.pl.name] || (attacker
-          ? () => `✨ ${sp.pl.name} saca un recurso de leyenda y marca un golazo para la historia.`
-          : (a) => `✨ ${sp.pl.name} se saca una jugada de leyenda y deja a ${a} solo ante el portero. ¡Gol!`);
-        const scorer = (SELF_SCORE_LEGENDS.includes(sp.pl.name) || (!MAGIC_LINES[sp.pl.name] && attacker)) ? sp.pl.name : shooter(t, sp.pl.name).name;
-        sc[t]++; add(min, t, 'goal', f(scorer), { magic: true, scorer });
-      }
-      if (sp.kind === 'zizou' && !zizouOut[o]) {
-        zizouOut[o] = true; T[o].mult *= 0.93;
-        add(min, t, 'card', '🟥 Materazzi le susurra algo a Zidane... ¡CABEZAZO EN EL PECHO! Roja para Zizou. Déjà vu.');
-      }
-    }
-    for (let t = 0; t < 2; t++) {
-      const o = 1 - t;
-      const A = T[t], D = T[o];
-      const rate = 0.04 * Math.pow((A.s.mid * A.mult) / (D.s.mid * D.mult), 2.2);
-      if (Math.random() < rate) {
-        const sh = shooter(t);
-        const pGoal = clamp(0.26 * Math.pow((A.s.att * A.mult) / ((D.s.def * D.mult + D.s.gk) / 2), 3) * Math.pow(sh.ovr / A.s.att, 1.5), 0.07, 0.6);
-        if (Math.random() < pGoal) { const as = assister(t, sh.name); sc[t]++; add(min, t, 'goal', pick(GOAL_T)(sh.name, as.name), { scorer: sh.name }); }
-        else if (Math.random() < 0.55) add(min, t, 'save', pick(SAVE_T)(D.gk.name, sh.name));
-        else add(min, t, 'miss', pick(MISS_T)(sh.name));
-      }
-      // Momento PRIME: si vas perdiendo o empatando al final, aparecen los héroes
-      if (min >= 75 && sc[t] <= sc[o]) {
-        for (const pl of A.list.filter((x) => x.tier === 'prime' && x.pos !== 'POR')) {
-          if (Math.random() < 0.003) { sc[t]++; add(min, t, 'goal', CLUTCH_LINES[pl.name] || `🏆 ${pl.name} saca su versión de campeón y marca.`, { clutch: true, scorer: pl.name }); }
-        }
-      }
-    }
-    if (min === 45) add(45, -1, 'info', `⏸️ Descanso: ${sc[0]} - ${sc[1]}`);
-    if (Math.random() < 0.012) { const t = rint(0, 1); add(min, t, 'card', `🟨 Amarilla para ${pick(T[t].list.filter((x) => x.pos !== 'POR')).name}.`); }
-  }
-  add(93, -1, 'info', `🏁 Final: ${sc[0]} - ${sc[1]}`);
-
-  let pens = null;
-  if (needWinner && sc[0] === sc[1]) {
-    const order = ['DC', 'ED', 'EI', 'MCO', 'MC', 'MCD', 'LI', 'LD', 'DFI', 'DFD', 'POR'];
-    const seq = []; const ps = [0, 0]; const kicks = [0, 0];
-    let done = false;
-    for (let round = 0; round < 30 && !done; round++) {
-      for (let t = 0; t < 2; t++) {
-        const o = 1 - t;
-        const tk = T[t].list.find((x) => x.pos === order[round % order.length]);
-        const gk = T[o].gk;
-        let p = 0.76 + (tk.ovr - gk.ovr) / 200;
-        if (gk.name === 'Jerzy Dudek') p -= 0.1;
-        if (tk.tier === 'troll') p -= 0.12;
-        if (tk.tier === 'prime') p += 0.06;
-        const ok = Math.random() < clamp(p, 0.3, 0.95);
-        if (ok) ps[t]++;
-        let text = ok ? `✅ ${tk.name} marca.` : (Math.random() < 0.5 ? `❌ ${gk.name} para el penalti de ${tk.name}.` : `❌ ${tk.name} la manda fuera.`);
-        if (!ok && gk.name === 'Jerzy Dudek') text = `🍝 ¡Dudek baila con piernas de espagueti y ${tk.name} falla!`;
-        kicks[t]++;
-        seq.push({ team: t, ok, text, score: [...ps] });
-        if (round < 5) {
-          const rem = [5 - kicks[0], 5 - kicks[1]];
-          if (ps[0] + rem[0] < ps[1] || ps[1] + rem[1] < ps[0]) { done = true; break; }
-        }
-      }
-      if (round >= 4 && !done && ps[0] !== ps[1]) done = true;
-    }
-    pens = { seq, score: ps };
-  }
-  let winner = sc[0] > sc[1] ? 0 : sc[1] > sc[0] ? 1 : -1;
-  if (pens) winner = pens.score[0] > pens.score[1] ? 0 : 1;
-  ev.sort((a, b) => a.min - b.min);
-  return {
-    a: pA.id, b: pB.id, score: sc, pens, winner: winner === -1 ? null : [pA.id, pB.id][winner],
-    stats: T.map((x) => ({ gk: Math.round(x.s.gk), def: Math.round(x.s.def), mid: Math.round(x.s.mid), att: Math.round(x.s.att), ovr: Math.round(avg(x.list.map((y) => y.ovr))) })),
-    events: ev,
-  };
-}
-
+// ---------- final: cara a cara por posición, votan los mánagers ----------
 function finishGame(r) {
   clearTimers(r);
   r.cur = null;
-  const ps = r.players;
-  const matches = [];
-  if (ps.length === 2) matches.push(simulate(ps[0], ps[1], true));
-  else for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) matches.push(simulate(ps[i], ps[j], false));
-  const table = ps.map((p) => ({ id: p.id, pts: 0, gf: 0, gc: 0, w: 0, d: 0, l: 0 }));
-  for (const m of matches) {
-    const A = table.find((x) => x.id === m.a), B = table.find((x) => x.id === m.b);
-    A.gf += m.score[0]; A.gc += m.score[1]; B.gf += m.score[1]; B.gc += m.score[0];
-    if (m.winner === m.a) { A.pts += 3; A.w++; B.l++; } else if (m.winner === m.b) { B.pts += 3; B.w++; A.l++; } else { A.pts++; B.pts++; A.d++; B.d++; }
+  r.votes = {};
+  for (const pos of POSITIONS) r.votes[pos.key] = {};
+  // Los bots votan al jugador con más media
+  for (const bot of r.players.filter((p) => p.bot)) {
+    for (const pos of POSITIONS) {
+      const best = r.players.slice().sort((x, y) => (y.team[pos.key].data.ovr - x.team[pos.key].data.ovr) || (Math.random() - 0.5))[0];
+      r.votes[pos.key][bot.id] = best.id;
+    }
   }
-  table.sort((x, y) => y.pts - x.pts || (y.gf - y.gc) - (x.gf - x.gc) || y.gf - x.gf);
-  r.results = { matches, table, champion: table[0].id };
+  r.results = null;
+  r.phase = 'voting';
+  log(r, '🗳️ ¡Subasta terminada! Ahora votad quién tiene mejor jugador en cada posición.');
+  broadcast(r);
+}
+
+function tallyVotes(r) {
+  const byPos = {};
+  const wins = Object.fromEntries(r.players.map((p) => [p.id, 0]));
+  for (const pos of POSITIONS) {
+    const count = Object.fromEntries(r.players.map((p) => [p.id, 0]));
+    for (const target of Object.values(r.votes[pos.key] || {})) if (target in count) count[target]++;
+    const max = Math.max(...Object.values(count));
+    const top = Object.keys(count).filter((id) => count[id] === max);
+    const winner = max > 0 && top.length === 1 ? top[0] : null;
+    if (winner) wins[winner]++;
+    byPos[pos.key] = { count, winner };
+  }
+  const maxW = Math.max(...Object.values(wins));
+  const leaders = Object.keys(wins).filter((id) => wins[id] === maxW);
+  return { byPos, wins, champion: leaders.length === 1 ? leaders[0] : null };
+}
+
+function allVoted(r) {
+  return r.players.filter((p) => !p.bot).every((p) => POSITIONS.every((pos) => r.votes[pos.key][p.id]));
+}
+
+function closeVoting(r) {
+  r.results = tallyVotes(r);
   r.phase = 'finished';
-  log(r, '🏟️ ¡Subasta terminada! Que ruede el balón.');
+  const ch = r.results.champion && r.players.find((p) => p.id === r.results.champion);
+  log(r, ch ? `🏆 ¡${ch.name} gana por votación!` : '🤝 ¡Empate en la votación!');
   broadcast(r);
 }
 
@@ -502,9 +342,20 @@ function handleAction(r, pid, b) {
       break;
     case 'bid': err = doBid(r, p, b.amount); break;
     case 'pass': err = doPass(r, p); break;
+    case 'vote':
+      if (r.phase !== 'voting') err = 'No es momento de votar';
+      else if (!r.votes[b.pos]) err = 'Posición no válida';
+      else if (!r.players.some((x) => x.id === b.target)) err = 'Equipo no válido';
+      else { r.votes[b.pos][p.id] = b.target; if (allVoted(r)) closeVoting(r); else broadcast(r); }
+      break;
+    case 'closeVoting':
+      if (!host) err = 'Solo el anfitrión puede cerrar la votación';
+      else if (r.phase !== 'voting') err = 'No hay votación abierta';
+      else closeVoting(r);
+      break;
     case 'restart':
       if (!host) err = 'Solo el anfitrión';
-      else { clearTimers(r); r.phase = 'lobby'; r.results = null; r.reveal = null; r.cur = null; r.posIdx = 0; for (const x of r.players) { x.team = {}; x.budget = BUDGET; } broadcast(r); }
+      else { clearTimers(r); r.phase = 'lobby'; r.results = null; r.votes = null; r.reveal = null; r.cur = null; r.posIdx = 0; for (const x of r.players) { x.team = {}; x.budget = BUDGET; } broadcast(r); }
       break;
     default: err = 'Acción desconocida';
   }
@@ -517,7 +368,7 @@ function createRoom(code, hostName) {
   return { room: r, pid: p.id };
 }
 
-const API = { createRoom, joinRoom, connectClient, handleAction, publicState, simulate };
+const API = { createRoom, joinRoom, connectClient, handleAction, publicState };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else root.SF_ENGINE = API;
 })(typeof window !== 'undefined' ? window : globalThis);

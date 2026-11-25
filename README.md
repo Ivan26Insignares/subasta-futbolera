@@ -1,6 +1,6 @@
 ﻿# ⚽ Subasta Futbolera
 
-Puja a ciegas por jugadores reales con 1000M y monta tu 4-3-3. Cada silueta puede ser una leyenda, un troll, un normalito, un crack o un héroe en su prime. Al final, los equipos se enfrentan en un partido simulado.
+Puja a ciegas por jugadores reales con 1000M y monta tu 4-3-3. Cada silueta puede ser una leyenda, un troll, un normalito, un crack o un héroe en su prime. Al final, cara a cara posición por posición: los propios jugadores votan quién tiene mejor jugador.
 
 ## Cómo jugar
 
@@ -13,5 +13,5 @@ El navegador de quien crea la sala hace de servidor (los mensajes viajan por un 
 ## Archivos
 
 - `index.html`: la web del juego.
-- `engine.js`: reglas de la subasta y simulador de partidos.
-- `players.js`: 550 jugadores reales (50 por posición).
+- `engine.js`: reglas de la subasta y de la votación final.
+- `players.js`: 660 jugadores reales (60 por posición).

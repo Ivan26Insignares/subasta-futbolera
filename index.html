@@ -106,6 +106,22 @@ input:focus{border-color:var(--gold)}
 .tier-good .face.back{border-color:var(--good);box-shadow:0 0 30px var(--good)}
 .tier-prime .face.back{border-color:var(--prime);box-shadow:0 0 40px var(--prime)}
 
+/* VOTACIÓN */
+.duel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-top:12px}
+.duel h3{font-size:24px;color:var(--gold);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.duel .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.vopt{position:relative;display:flex;gap:10px;align-items:center;text-align:left;padding:10px;border-radius:12px;background:var(--panel2);border:2px solid transparent;width:100%;font-weight:600}
+.vopt .ph{width:56px;height:56px;border-radius:10px;background:#000 center top/cover;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue';font-size:24px;color:var(--gold)}
+.vopt .nm{font-weight:800;font-size:15px;line-height:1.15}
+.vopt .sub{font-size:12px;color:var(--muted)}
+.vopt.mine{border-color:var(--gold);box-shadow:0 0 14px #f5c54255}
+.vopt.win{background:#1c4a30}
+.vopt .votes{position:absolute;top:6px;right:8px;display:flex;gap:3px}
+.vopt .votes i{width:10px;height:10px;border-radius:50%;display:block}
+.vbadge{font-family:Inter,sans-serif;font-size:12px;font-weight:800;padding:3px 8px;border-radius:999px;background:var(--panel2)}
+.vscore{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.vscore div{text-align:center}
+.vscore b{display:block;font-family:'Bebas Neue';font-size:54px;line-height:1}
 /* MATCH */
 .scoreboard{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;text-align:center}
 .scoreboard .sc{font-family:'Bebas Neue';font-size:80px;line-height:1}
@@ -133,7 +149,7 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
   <div class="hero">
     <h1>Subasta Futbolera</h1>
     <p class="muted">Puja a ciegas por jugadores reales. ¿Leyenda o troll? Solo lo sabrás cuando sea tuyo.</p>
-    <p class="muted" style="font-size:12px">Versión 4 · conexión por servidor</p>
+    <p class="muted" style="font-size:12px">Versión 5 · conexión por servidor</p>
   </div>
   <div class="card" style="max-width:760px;margin:0 auto 16px">
     <label class="muted">Tu nombre de mánager</label>
@@ -158,7 +174,7 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
     • En cada posición hay uno de cada tipo:
     <div class="tiers"><span class="tag t-troll">🤡 TROLL</span><span class="tag t-legend">👑 LEYENDA</span><span class="tag t-normal">😐 NORMALITO</span><span class="tag t-good">💪 BUENO</span><span class="tag t-prime">🏆 EN SU PRIME</span></div>
     • Al comprar, se revela quién es. Si te quedas sin jugador en una posición, te comes el que sobre.<br>
-    • Al final, vuestros equipos se enfrentan en un partido simulado (con penaltis si hace falta).
+    • Al final, cara a cara posición por posición: <b>vosotros votáis</b> qué jugador es mejor. Gana quien se lleve más posiciones.
   </div>
 </section>
 
@@ -220,12 +236,11 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
 <!-- FINISHED -->
 <section id="finished" class="hidden">
   <div class="row" style="justify-content:space-between;margin-bottom:12px">
-    <h2 style="font-size:38px">🏟️ La hora de la verdad</h2>
+    <h2 style="font-size:38px" id="ftitle">🗳️ Cara a cara</h2>
     <div class="row" id="fbtns"></div>
   </div>
-  <div class="row" id="matchtabs" style="margin-bottom:12px"></div>
-  <div class="card" id="matchview"></div>
-  <div class="card hidden" id="tablecard" style="margin-top:16px"></div>
+  <div class="card" id="votehead"></div>
+  <div id="duels"></div>
   <div class="card" style="margin-top:16px"><h3>Premios de la subasta</h3><div class="awards" id="awards"></div></div>
   <div class="card" style="margin-top:16px"><h3>Plantillas finales</h3><div class="teams" id="fpitches"></div></div>
 </section>
@@ -245,8 +260,8 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
 })();
 </script>
 
-<script src="players.js?v=4"></script>
-<script src="engine.js?v=4"></script>
+<script src="players.js?v=5"></script>
+<script src="engine.js?v=5"></script>
 <script>
 const TIER = {
   troll:{label:'🤡 TROLL',cls:'t-troll'}, legend:{label:'👑 LEYENDA',cls:'t-legend'},
@@ -346,7 +361,11 @@ function hostMessage(topic,p){
   if(topic!==T+'/up' || !m.cid) return;
   const to=T+'/to/'+m.cid;
   const g=guests[m.cid];
-  if(g) g.last=Date.now();
+  if(g){
+    g.last=Date.now();
+    // Si lo habíamos dado por desconectado, vuelve a estar en línea sin perder nada
+    if(!g.cleanup && m.t!=='bye') g.cleanup=SF_ENGINE.connectClient(HOST.room,g.pid,s=>send(to,{t:'state',s}));
+  }
   if(m.t==='join'){
     const j=SF_ENGINE.joinRoom(HOST.room, String(m.name||'Jugador').slice(0,16), m.pid);
     if(j.error) return send(to,{t:'reply',id:m.id,error:j.error});
@@ -376,27 +395,34 @@ async function joinRoom(){
 }
 async function startJoin(code,name,pid,rejoin){
   resetNet();
-  JOIN={code,name,pid};
+  const J={code,name,pid};
+  JOIN=J;
   toast('Buscando la sala '+code+'…', true);
-  // Probamos los servidores en orden hasta dar con el de la sala
+  // Probamos los servidores en orden hasta dar con el de la sala.
+  // Si mientras tanto empieza otro intento de entrar (JOIN cambia), este se abandona sin tocar nada.
   for(let i=0;i<BROKERS.length;i++){
-    if(!JOIN) return;
-    try{ NET=await connectBroker(i); }catch(e){ break; }
-    i=BROKERS.indexOf(NET.url);
+    let net;
+    try{ net=await connectBroker(i); }catch(e){ break; }
+    if(JOIN!==J){ try{ net.client.end(true) }catch(x){} return; }
+    NET=net;
+    i=BROKERS.indexOf(net.url);
     const T=TOPIC(code);
-    NET.client.subscribe(T+'/to/'+CID,{qos:1});
-    NET.client.on('message',(topic,p)=>guestMessage(topic,p));
-    NET.client.on('connect',()=>NET.client.subscribe(T+'/to/'+CID,{qos:1}));
+    net.client.subscribe(T+'/to/'+CID,{qos:1});
+    net.client.on('message',(topic,p)=>{ if(NET===net) guestMessage(topic,p); });
+    net.client.on('connect',()=>net.client.subscribe(T+'/to/'+CID,{qos:1}));
     try{
       const r=await request({t:'join',name,pid},5000);
-      ROOM=code; PID=r.pid; JOIN.pid=r.pid; lastHostMsg=Date.now();
+      if(JOIN!==J) return;
+      ROOM=code; PID=r.pid; J.pid=r.pid; lastHostMsg=Date.now();
       sessionStorage.setItem('sf_sess',JSON.stringify({room:code,pid:r.pid,name}));
       return;
     }catch(e){
+      if(JOIN!==J) return;
       if(e.message!=='timeout'){ resetNet(); show('home'); return toast(e.message); }
-      try{ NET.client.end(true) }catch(x){} NET=null;
+      try{ net.client.end(true) }catch(x){} NET=null;
     }
   }
+  if(JOIN!==J) return;
   resetNet(); if(rejoin){ S=null; sessionStorage.removeItem('sf_sess'); show('home'); }
   toast(`No encuentro la sala ${code}. Revisa el código y que el anfitrión siga con la pestaña abierta.`);
 }
@@ -430,7 +456,8 @@ function resetNet(){
 function heartbeat(){
   if(HOST){
     const now=Date.now();
-    for(const [cid,g] of Object.entries(guests)) if(now-g.last>25000){ if(g.cleanup) g.cleanup(); delete guests[cid]; }
+    // Sin noticias en 30 s: se marca como desconectado (pero se recuerda quién es)
+    for(const g of Object.values(guests)) if(g.cleanup && now-g.last>30000){ g.cleanup(); g.cleanup=null; }
     updateHostStatus();
   } else if(ROOM && NET && JOIN){
     send(TOPIC(ROOM)+'/up',{t:'ping',cid:CID});
@@ -452,9 +479,9 @@ const me = () => pl(PID);
 function render(){
   if(!S) return;
   if(!me()){ toast('Te han sacado de la sala'); resetNet(); S=null; sessionStorage.removeItem('sf_sess'); return show('home'); }
-  if(S.phase==='lobby'){ $('overlay').classList.add('hidden'); resultsKey=null; lastReveal=null; return renderLobby(); }
+  if(S.phase==='lobby'){ $('overlay').classList.add('hidden'); finalKey=null; lastReveal=null; return renderLobby(); }
   if(S.phase==='auction'||S.phase==='reveal'){ show('auction'); renderAuction(); renderReveal(); return; }
-  if(S.phase==='finished'){ $('overlay').classList.add('hidden'); show('finished'); renderFinished(); }
+  if(S.phase==='voting'||S.phase==='finished'){ $('overlay').classList.add('hidden'); show('finished'); renderFinished(); }
 }
 
 function renderLobby(){
@@ -565,17 +592,52 @@ requestAnimationFrame(tick);
 function bidCustom(){ const v=parseInt($('custom').value,10); if(!v) return toast('Escribe una cantidad'); act({type:'bid',amount:v}); $('custom').value=''; }
 $('custom').addEventListener('keydown',e=>{ if(e.key==='Enter') bidCustom(); });
 
-// ---------- final ----------
+// ---------- final: cara a cara por posición y votación ----------
+let finalKey=null;
 function renderFinished(){
-  const key=JSON.stringify(S.results.matches.map(m=>m.score))+S.results.champion;
-  if(resultsKey===key) return;
-  resultsKey=key;
-  const R=S.results;
-  $('fbtns').innerHTML = S.hostId===PID ? `<button class="gold" onclick="act({type:'restart'})">🔁 Nueva subasta</button>` : '';
-  $('matchtabs').innerHTML = R.matches.length>1 ? R.matches.map((m,i)=>`<button onclick="playMatch(${i})">${esc(pl(m.a).name)} vs ${esc(pl(m.b).name)}</button>`).join('') + `<button onclick="showTable()">🏆 Clasificación</button>` : '';
-  renderPitchesF();
-  renderAwards();
-  playMatch(0);
+  const voting = S.phase==='voting';
+  const tally = voting ? S.tally : S.results;
+  const host = S.hostId===PID;
+  $('ftitle').textContent = voting ? '🗳️ Cara a cara: votad el mejor' : '🏆 Resultado final';
+  $('fbtns').innerHTML = host ? (voting
+      ? `<button class="gold" onclick="if(confirm('¿Cerrar la votación y ver el resultado?')) act({type:'closeVoting'})">🏁 Cerrar votación</button>`
+      : `<button class="gold" onclick="act({type:'restart'})">🔁 Nueva subasta</button>`) : '';
+  const humans=S.players.filter(p=>!p.bot);
+  const done=p=>S.positions.every(pos=>S.votes[pos.key][p.id]);
+  const myLeft=S.positions.filter(pos=>!S.votes[pos.key][PID]).length;
+  const score=`<div class="vscore">${S.players.map(p=>`<div><span style="color:${p.color};font-weight:800">${esc(p.name)}</span><b>${tally.wins[p.id]}</b><span class="muted" style="font-size:12px">posiciones</span></div>`).join('')}</div>`;
+  let head;
+  if(voting){
+    head = `<div style="text-align:center"><b>En cada posición, pulsa el jugador que creas mejor.</b><br>
+      <span class="muted">${myLeft?('Te quedan '+myLeft+' por votar'):'¡Has votado todo! Esperando al resto…'} ·
+      Han terminado: ${humans.filter(done).map(p=>esc(p.name)).join(', ')||'nadie todavía'}</span>
+      <div class="muted" style="margin-top:6px;font-size:13px">Gana cada posición el jugador con más votos (si empatan, nadie se la lleva). Gana el equipo con más posiciones.</div></div>` + score;
+  } else {
+    const ch=S.results.champion&&pl(S.results.champion);
+    head = `<div class="champ">${ch?'🏆 GANA '+esc(ch.name):'🤝 ¡EMPATE!'}</div>` + score;
+  }
+  $('votehead').innerHTML=head;
+  $('duels').innerHTML=S.positions.map(pos=>{
+    const t=tally.byPos[pos.key];
+    const w=t.winner&&pl(t.winner);
+    return `<div class="duel"><h3><span>${esc(pos.name)} (${pos.key})</span>
+      ${!voting||Object.keys(S.votes[pos.key]).length?`<span class="vbadge">${w?'Gana '+esc(w.name):(Object.keys(S.votes[pos.key]).length?'Empate':'')}</span>`:''}</h3>
+      <div class="opts">${S.players.map(p=>{
+        const x=p.team[pos.key]; const tr=TIER[x.tier];
+        const voters=Object.entries(S.votes[pos.key]).filter(([v,tg])=>tg===p.id).map(([v])=>pl(v)).filter(Boolean);
+        const mine=S.votes[pos.key][PID]===p.id;
+        return `<button class="vopt ${mine?'mine':''} ${t.winner===p.id&&(!voting||voters.length)?'win':''}" ${voting?`onclick="act({type:'vote',pos:'${pos.key}',target:'${p.id}'})"`:'disabled style="opacity:1;cursor:default"'}>
+          <div class="ph" data-q="${esc(x.q)}">${initials(x.name)}</div>
+          <div><div class="nm">${esc(x.name)}</div>
+            <div class="sub"><span class="${tr.cls}">${tr.label}</span> · ${x.ovr}</div>
+            <div class="sub" style="color:${p.color}">${esc(p.name)} · ${x.price}M</div></div>
+          <div class="votes">${voters.map(v=>`<i title="${esc(v.name)}" style="background:${v.color}"></i>`).join('')}</div>
+        </button>`;
+      }).join('')}</div></div>`;
+  }).join('');
+  hydratePhotos($('duels'));
+  const key=S.phase+'|'+S.players.map(p=>Object.keys(p.team).length).join();
+  if(finalKey!==key){ finalKey=key; renderPitchesF(); renderAwards(); }
 }
 function renderPitchesF(){ const el=$('fpitches'); el.innerHTML=S.players.map(p=>pitchHTML(p)).join(''); hydratePhotos(el); }
 function renderAwards(){
@@ -588,53 +650,6 @@ function renderAwards(){
   const card=(t,x,extra)=>`<div class="pitem" style="flex-direction:column;align-items:flex-start"><span class="muted">${t}</span>${x?`<b>${esc(x.name)}</b><span style="color:${x.owner.color}">${esc(x.owner.name)} · ${x.price}M ${extra||''}</span>`:'<b>—</b>'}</div>`;
   $('awards').innerHTML = card('💎 Ganga del día',ganga,`(media ${ganga.ovr})`) + card('🤡 Mayor timo',timo,'por un troll') + card('💸 Fichaje más caro',caro)
     + `<div class="pitem" style="flex-direction:column;align-items:flex-start"><span class="muted">👑 Coleccionista de leyendas</span><b style="color:${legends.p.color}">${esc(legends.p.name)}</b><span>${legends.n} leyendas</span></div>`;
-}
-function showTable(){
-  clearInterval(matchTimer);
-  const R=S.results; $('matchview').classList.add('hidden'); const tc=$('tablecard'); tc.classList.remove('hidden');
-  tc.innerHTML=`<div class="champ">🏆 ${esc(pl(R.champion).name)} CAMPEÓN</div><table><tr><th></th><th>Mánager</th><th>PTS</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th></tr>
-   ${R.table.map((t,i)=>`<tr><td>${i+1}</td><td style="color:${pl(t.id).color};font-weight:800">${esc(pl(t.id).name)}</td><td><b>${t.pts}</b></td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf}</td><td>${t.gc}</td></tr>`).join('')}</table>`;
-}
-function playMatch(i){
-  matchIdx=i; matchStart=Date.now(); clearInterval(matchTimer);
-  $('tablecard').classList.add('hidden'); $('matchview').classList.remove('hidden');
-  drawMatch(); matchTimer=setInterval(drawMatch,250);
-}
-const MATCH_MS=32000;
-function drawMatch(skip){
-  const m=S.results.matches[matchIdx]; const A=pl(m.a), B=pl(m.b);
-  let el=Date.now()-matchStart; if(skip) { matchStart=Date.now()-1e7; el=1e7; }
-  const min=Math.min(93,Math.floor(el/MATCH_MS*93));
-  const evs=m.events.filter(e=>e.min<=min && !(e.min===93 && el<MATCH_MS));
-  const sc=[0,0]; evs.forEach(e=>{ if(e.type==='goal') sc[e.team]++; });
-  let pensShown=[], penDone=!m.pens;
-  if(el>=MATCH_MS && m.pens){ const n=Math.floor((el-MATCH_MS-1500)/1400)+1; pensShown=m.pens.seq.slice(0,Math.max(0,n)); penDone=n>=m.pens.seq.length; }
-  const finished = el>=MATCH_MS && penDone;
-  const lastPen=pensShown[pensShown.length-1];
-  const stat=(lbl,a,b)=>`<div class="statbar"><span>${a}</span><div class="b"><i style="width:${a/(a+b)*100}%;background:${A.color}"></i><i style="width:${b/(a+b)*100}%;background:${B.color}"></i></div><span>${b}</span></div><div class="muted" style="text-align:center;font-size:11px;margin-top:-3px">${lbl}</div>`;
-  const s=m.stats;
-  const evHTML = evs.map(e=>`<div class="ev ${e.type} ${e.team===1?'right':''} ${e.type==='info'?'info':''}" ${e.team>=0?`style="border-${e.team===1?'right':'left'}:4px solid ${e.team===0?A.color:B.color}"`:''}><b>${e.min}'</b> ${esc(e.text)}</div>`)
-    .concat(pensShown.map(p=>`<div class="ev ${p.team===1?'right':''}" style="border-${p.team===1?'right':'left'}:4px solid ${p.team===0?A.color:B.color}">🥅 ${esc(p.text)} (${p.score.join('-')})</div>`));
-  const mv=$('matchview');
-  if(!mv.querySelector('.events') || mv.dataset.m!=matchIdx+'_'+matchStart){
-    mv.dataset.m=matchIdx+'_'+matchStart;
-    mv.innerHTML='<div class="top"></div><div class="events"></div>';
-  }
-  const evBox=mv.querySelector('.events');
-  while(evBox.children.length<evHTML.length){ evBox.insertAdjacentHTML('beforeend',evHTML[evBox.children.length]); }
-  const top=mv.querySelector('.top'); const topKey=[sc,min,finished,pensShown.length].join('|');
-  if(top.dataset.k===topKey) { if(finished) clearInterval(matchTimer); return; }
-  top.dataset.k=topKey;
-  top.innerHTML=`
-   <div class="scoreboard">
-     <div><div class="tn" style="color:${A.color}">${esc(A.name)}</div><div class="muted">Media ${s[0].ovr}</div></div>
-     <div><div class="sc">${sc[0]} - ${sc[1]}</div>${m.pens&&el>=MATCH_MS?`<div class="minute">Penaltis ${lastPen?lastPen.score.join(' - '):'0 - 0'}</div>`:`<div class="minute">${finished?'FINAL':min+"'"}</div>`}</div>
-     <div><div class="tn" style="color:${B.color}">${esc(B.name)}</div><div class="muted">Media ${s[1].ovr}</div></div>
-   </div>
-   <div style="max-width:420px;margin:10px auto">${stat('Portería',s[0].gk,s[1].gk)}${stat('Defensa',s[0].def,s[1].def)}${stat('Medio',s[0].mid,s[1].mid)}${stat('Ataque',s[0].att,s[1].att)}</div>
-   ${finished?`<div class="champ">${m.winner?'🏆 GANA '+esc(pl(m.winner).name):'🤝 EMPATE'}</div>`:''}
-   <div class="row" style="justify-content:center">${!finished?`<button onclick="drawMatch(true)">⏩ Saltar al final</button>`:`<button onclick="playMatch(${matchIdx})">🔁 Repetir partido</button>`}</div>`;
-  if(finished) clearInterval(matchTimer);
 }
 
 // ---------- inicio ----------

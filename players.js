@@ -188,6 +188,99 @@ const EXTRA = {
   },
 };
 
+// ---------- AMPLIACIÓN 2: 2 de cada tipo por posición (110 jugadores más) ----------
+const EXTRA2 = {
+  POR: {
+    legend: ['Sepp Maier|93|Alemania|El gato de Anzing. Mundial 74 y tres Copas de Europa.', 'Ricardo Zamora|92|España|El Divino. Da nombre al trofeo al mejor portero.'],
+    prime: ['Kasper Schmeichel|80|Dinamarca|Campeón de la Premier con el Leicester del milagro.', 'Andrés Palop|79|España|Paró tres penaltis en una final europea con el Sevilla.'],
+    normal: ['Álex Remiro|77|España', 'Aitor Fernández|74|España'],
+    good: ['Gianluigi Donnarumma|88|Italia|Mejor jugador de la Euro 2020.', 'Wojciech Szczęsny|86|Polonia'],
+    troll: ['David James|62|Inglaterra|Le llamaban "Calamity James".', 'Kiko Casilla|61|España'],
+  },
+  LI: {
+    legend: ['Antonio Cabrini|91|Italia|Campeón del mundo en 1982.', 'Júnior|91|Brasil|Lateral del Brasil mágico de 1982.|Leovegildo Lins da Gama Júnior'],
+    prime: ['Djimi Traoré|76|Mali|Titular en la remontada de Estambul 2005.', 'Christian Ziege|80|Alemania|Campeón de Europa en 1996.'],
+    normal: ['Rubén Duarte|73|España', 'Sergio Reguilón|77|España'],
+    good: ['Alejandro Grimaldo|86|España', 'Ben Chilwell|84|Inglaterra'],
+    troll: ['Pablo Armero|61|Colombia|Más famoso por sus bailes que por sus centros.', 'Brandon Williams|60|Inglaterra'],
+  },
+  DFD: {
+    legend: ['Jaap Stam|91|Países Bajos|Un armario neerlandés en el United del triplete.', 'Pepe|91|Portugal|Tres Champions y la Euro 2016.|Pepe Portuguese footballer Real Madrid'],
+    prime: ['Wes Brown|78|Inglaterra|Titular en la final de Champions de Moscú 2008.', 'Eric Abidal|82|Francia|Levantó la Champions 2011 tras superar una enfermedad.'],
+    normal: ['Antonio Raíllo|76|España', 'Óscar Duarte|74|Costa Rica'],
+    good: ['Dayot Upamecano|85|Francia', 'Manuel Akanji|85|Suiza'],
+    troll: ['Titus Bramble|58|Inglaterra|Un clásico de los vídeos de errores.', 'Jonathan Woodgate|60|Inglaterra|Debutó con el Madrid con gol en propia y expulsión.'],
+  },
+  DFI: {
+    legend: ['Alessandro Costacurta|91|Italia|Billy. Pilar del Milan de Sacchi y Capello.', 'Jürgen Kohler|91|Alemania|Campeón del mundo 1990 y de Champions 1997.'],
+    prime: ['Jamie Carragher|81|Inglaterra|Jugó Estambul 2005 con calambres hasta el final.', 'Pau Torres|81|España|Campeón de la Europa League con el Villarreal.'],
+    normal: ['Aïssa Mandi|75|Argelia', 'Iván Ramis|73|España'],
+    good: ['Lúcio|87|Brasil|Campeón del mundo 2002 y del triplete del Inter.', 'Vincent Kompany|87|Bélgica'],
+    troll: ['Martín Demichelis|64|Argentina', 'Philippe Mexès|65|Francia|Capaz de una chilena imposible y de una expulsión absurda el mismo día.'],
+  },
+  LD: {
+    legend: ['Giuseppe Bergomi|91|Italia|El Tío. Campeón del mundo con 18 años.', 'Manfred Kaltz|91|Alemania|El rey de los centros "bananas".'],
+    prime: ['Christian Panucci|81|Italia|Ganó la Champions con el Milan y con el Madrid.', 'Oleguer Presas|77|España|Titular en la final de Champions de 2006.'],
+    normal: ['Iñigo Lekue|74|España', 'Andoni Gorosabel|74|España'],
+    good: ['Pedro Porro|84|España', 'Jeremie Frimpong|85|Países Bajos'],
+    troll: ['Phil Neville|63|Inglaterra|Su penalti en el 89 echó a Inglaterra de la Euro 2000.', 'Cicinho|61|Brasil|Llegó al Madrid y se hizo más famoso por las fiestas.'],
+  },
+  MCD: {
+    legend: ['Pep Guardiola|91|España|El 4 del Dream Team.|Pep Guardiola', 'Falcão|92|Brasil|El Rey de Roma, cerebro del Brasil de 1982.|Paulo Roberto Falcão'],
+    prime: ['Kostas Katsouranis|79|Grecia|Medio de la Grecia campeona de 2004.', 'Owen Hargreaves|81|Inglaterra|Champions 2001 y 2008, y penalti en la tanda de Moscú.'],
+    normal: ['Rubén Pérez|73|España', 'Étienne Capoue|76|Francia'],
+    good: ['Michael Essien|87|Ghana|El Bisonte.', 'Esteban Cambiasso|86|Argentina'],
+    troll: ['Eric Djemba-Djemba|58|Camerún|"Djemba-Djemba: tan malo que le pusieron el nombre dos veces."', 'Lee Cattermole|60|Inglaterra|Más tarjetas que pases buenos.'],
+  },
+  MC: {
+    legend: ['Bernd Schuster|91|Alemania|El Ángel Rubio. Jugó en Barça, Madrid y Atlético.', 'Clarence Seedorf|92|Países Bajos|Cuatro Champions con tres clubes distintos.'],
+    prime: ['Ramires|80|Brasil|Champions 2012 y un gol de vaselina en el Camp Nou.', 'Christian Karembeu|80|Francia|Mundial 98 y dos Champions.'],
+    normal: ['Carlos Soler|78|España', 'Óscar Melendo|73|España'],
+    good: ['Michael Ballack|88|Alemania', 'Bastian Schweinsteiger|88|Alemania|Campeón del mundo 2014 con la cara ensangrentada.'],
+    troll: ['Stephen Ireland|62|Irlanda|Se inventó la muerte de sus abuelas para no ir con la selección.', 'Charlie Adam|62|Escocia'],
+  },
+  MCO: {
+    legend: ['Gianni Rivera|93|Italia|El Golden Boy del Milan. Balón de Oro 1969.', 'Ruud Gullit|94|Países Bajos|Rastas, Euro 88 y Balón de Oro.'],
+    prime: ['Deco|84|Portugal|Champions con el Oporto de Mourinho y con el Barça.', 'Wesley Sneijder|85|Países Bajos|El cerebro del triplete del Inter en 2010.'],
+    normal: ['Sergio Canales|78|España', 'Álex Fernández|74|España'],
+    good: ['James Rodríguez|86|Colombia|Bota de Oro del Mundial 2014.', 'Rafael van der Vaart|85|Países Bajos'],
+    troll: ['Adel Taarabt|63|Marruecos|Talento infinito, ganas de correr limitadas.', 'Hatem Ben Arfa|66|Francia|Podía regatear a todo un equipo... o no aparecer.'],
+  },
+  EI: {
+    legend: ['Dragan Džajić|91|Yugoslavia|La Magia del Estrella Roja.', 'Rob Rensenbrink|91|Países Bajos|Estrella de la Naranja Mecánica.'],
+    prime: ['Florent Malouda|81|Francia|Champions 2012 con el Chelsea.', 'Pierre Littbarski|80|Alemania|Campeón del mundo en 1990.'],
+    normal: ['Juanmi|75|España||Juanmi Spanish footballer Betis', 'José Luis Morales|76|España'],
+    good: ['Robert Pirès|87|Francia|Mundial 98, Euro 2000 e Invencible del Arsenal.', 'Alexis Sánchez|86|Chile'],
+    troll: ['Gervinho|63|Costa de Marfil|Su frente tiene más fama que sus goles.', 'Yannick Bolasie|62|República Democrática del Congo|El rey del regate de tacón sin sentido.'],
+  },
+  ED: {
+    legend: ['Gareth Bale|91|Gales|Chilena en Kiev y carrera en la final de Copa.', 'Roberto Rivellino|92|Brasil|Inventor de "la elástica". Campeón del mundo 1970.|Roberto Rivellino'],
+    prime: ['Goran Pandev|79|Macedonia del Norte|Pieza del triplete del Inter en 2010.', 'Thomas Lemar|80|Francia|Campeón del mundo 2018.'],
+    normal: ['Samuel Chukwueze|78|Nigeria', 'Dani Rodríguez|75|España||Dani Rodríguez Mallorca footballer'],
+    good: ['Federico Chiesa|85|Italia|Campeón de Europa 2020.', 'Christian Pulisic|85|Estados Unidos'],
+    troll: ['Andros Townsend|63|Inglaterra', 'Marlos Moreno|57|Colombia|El Manchester City lo fichó y lo cedió a todas partes.'],
+  },
+  DC: {
+    legend: ['Andriy Shevchenko|93|Ucrania|Balón de Oro 2004 y Champions con el Milan.', 'Paolo Rossi|92|Italia|Pichichi y héroe del Mundial 82.'],
+    prime: ['Diego Milito|82|Argentina|Doblete en la final de Champions 2010.', 'Teddy Sheringham|80|Inglaterra|Empató en el descuento de la final de 1999.'],
+    normal: ['Ángel Rodríguez|74|España||Ángel Rodríguez Getafe footballer', 'Hugo Duro|75|España'],
+    good: ['Didier Drogba|89|Costa de Marfil|Cabezazo y penalti decisivo en Múnich 2012.', 'David Villa|89|España|Máximo goleador de la historia de la selección española.'],
+    troll: ['Yaya Sanogo|55|Francia|Delantero del Arsenal... con tendencia a no marcar.', 'Ricky van Wolfswinkel|60|Países Bajos'],
+  },
+};
+for (const [pos, tiers] of Object.entries(EXTRA2)) {
+  for (const [tier, list] of Object.entries(tiers)) EXTRA[pos][tier].push(...list);
+}
+// Características de los nuevos
+Object.assign(EXTRA2, { _attr: {
+  R: ['Gareth Bale', 'Florent Malouda', 'Gervinho', 'Federico Chiesa', 'Christian Pulisic', 'Andros Townsend', 'Marlos Moreno', 'Jeremie Frimpong', 'Cicinho', 'Ben Chilwell', 'Pablo Armero', 'Brandon Williams', 'Ramires'],
+  T: ['Andriy Shevchenko', 'Paolo Rossi', 'Roberto Rivellino', 'Goran Pandev', 'Michael Ballack', 'Rafael van der Vaart', 'Philippe Mexès', 'Christian Ziege', 'David Villa', 'Diego Milito'],
+  P: ['Pep Guardiola', 'Falcão', 'Bernd Schuster', 'Clarence Seedorf', 'Bastian Schweinsteiger', 'Charlie Adam', 'Deco', 'Wesley Sneijder', 'James Rodríguez', 'Thomas Lemar', 'Teddy Sheringham', 'Manfred Kaltz', 'Pedro Porro', 'Júnior', 'Alejandro Grimaldo', 'Pau Torres', 'Kiko Casilla'],
+  G: ['Adel Taarabt', 'Hatem Ben Arfa', 'Pierre Littbarski', 'Robert Pirès', 'Alexis Sánchez', 'Yannick Bolasie', 'Stephen Ireland'],
+  D: ['Antonio Cabrini', 'Djimi Traoré', 'Christian Panucci', 'Oleguer Presas', 'Phil Neville', 'Esteban Cambiasso', 'Lee Cattermole', 'Owen Hargreaves'],
+  F: ['Ruud Gullit', 'Jaap Stam', 'Titus Bramble', 'Dayot Upamecano', 'Lúcio', 'Michael Essien', 'Eric Djemba-Djemba', 'Kostas Katsouranis', 'Christian Karembeu', 'Didier Drogba', 'Yaya Sanogo', 'Kasper Schmeichel', 'Gianluigi Donnarumma', 'David James'],
+} });
+
 for (const [pos, tiers] of Object.entries(EXTRA)) {
   for (const [tier, list] of Object.entries(tiers)) {
     for (const line of list) {
@@ -208,9 +301,20 @@ const ATTR = {
   D: ['Philipp Lahm', 'Aaron Wan-Bissaka', 'Jules Koundé', 'Juanfran Torres', 'Dani Carvajal', 'Álvaro Arbeloa', 'Gonzalo Montiel', 'Benjamin Pavard', 'Filipe Luís', 'Lucas Hernández', 'Joan Capdevila', 'Morgan Schneiderlin'],
   F: ['Peter Schmeichel', 'Thibaut Courtois', 'Oliver Kahn', 'Javier Zanetti', 'Reece James', 'Phil Jones', 'Kurt Zouma', 'Chris Smalling', 'Yerry Mina', 'Harry Maguire', 'Mamadou Sakho', 'Eric Bailly', 'Antonio Rüdiger', 'Ronald Araújo', 'Matthijs de Ligt', 'Kalidou Koulibaly', 'Virgil van Dijk', 'Giorgio Chiellini', 'Marcel Desailly', 'Nemanja Vidić', 'Marco Materazzi', 'Marc Cucurella', "N'Golo Kanté", 'Aurélien Tchouaméni', 'Patrick Vieira', 'Lothar Matthäus', 'Frank Rijkaard', 'Roy Keane', 'Edgar Davids', 'Johan Neeskens', 'Gennaro Gattuso', 'Javi Martínez', 'Sami Khedira', 'Fred', 'Tiémoué Bakayoko', 'Joey Barton', 'Gary Medel', 'Victor Wanyama', 'Marouane Fellaini', 'Geoffrey Kondogbia', 'Anderson', 'Jack Rodwell', 'Federico Valverde', 'Nicolò Barella', 'Saúl Ñíguez', 'Mikel Merino', 'Rodrigo De Paul', 'Blaise Matuidi', 'Simone Perrotta', 'Christoph Kramer', 'Jude Bellingham', 'Renato Sanches', 'Ji-sung Park', 'Dirk Kuyt', 'Erling Haaland', 'Zlatan Ibrahimović', 'Éder', 'Angelos Charisteas', 'Olivier Giroud', 'Fernando Llorente', 'Luca Toni', 'Joselu', 'Emile Heskey', 'Andy Carroll', 'Peter Crouch', 'Carlos Kaiser', 'Cristhian Stuani', 'Borja Iglesias', 'Chimy Ávila', 'Kike García'],
 };
+for (const [k, names] of Object.entries(EXTRA2._attr)) ATTR[k].push(...names);
 const ATTR_OF = {};
 for (const [k, names] of Object.entries(ATTR)) for (const n of names) ATTR_OF[n] = k;
 for (const pos of Object.keys(PLAYERS)) for (const p of PLAYERS[pos]) p.attr = ATTR_NAMES[ATTR_OF[p.name] || ATTR_BY_POS[pos]];
+
+// Porteros: su característica es una de AGILIDAD, REFLEJOS, TOQUE DE BALÓN o PARADA (por defecto PARADA)
+const GK_ATTR = {
+  'AGILIDAD': ['Lev Yashin', 'Peter Schmeichel', 'Jerzy Dudek', 'Sepp Maier', 'Ricardo Zamora', 'Rui Patrício', 'Kasper Schmeichel', 'Yann Sommer', 'Heurelho Gomes', 'Loris Karius', 'Vicente Guaita', 'Rui Silva', 'Aitor Fernández'],
+  'REFLEJOS': ['Iker Casillas', 'David de Gea', 'Keylor Navas', 'Hugo Lloris', 'Oliver Kahn', 'Wojciech Szczęsny', 'Cláudio Taffarel', 'Sergio Asenjo', 'Fernando Pacheco', 'Joel Robles', 'Rubén Blanco'],
+  'TOQUE DE BALÓN': ['Manuel Neuer', 'Marc-André ter Stegen', 'Ederson', 'Alisson Becker', 'Edwin van der Sar', 'Víctor Valdés', 'René Higuita', 'Jorge Campos', 'Kepa Arrizabalaga', 'Unai Simón', 'Fabien Barthez', 'Álex Remiro', 'Pau López', 'Mike Maignan'],
+};
+const GK_OF = {};
+for (const [attr, names] of Object.entries(GK_ATTR)) for (const n of names) GK_OF[n] = attr;
+for (const p of PLAYERS.POR) p.attr = GK_OF[p.name] || 'PARADA';
 
 const PRICE_RANGES = {
   troll: [35, 170],
