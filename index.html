@@ -106,6 +106,9 @@ input:focus{border-color:var(--gold)}
 .tier-good .face.back{border-color:var(--good);box-shadow:0 0 30px var(--good)}
 .tier-prime .face.back{border-color:var(--prime);box-shadow:0 0 40px var(--prime)}
 
+/* PAUSA */
+#pausebanner{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:70;padding:16px;backdrop-filter:blur(3px)}
+.pausebox{background:var(--panel);border:2px solid var(--gold);border-radius:18px;padding:28px 32px;text-align:center;max-width:420px}
 /* VOTACIÓN */
 .duel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-top:12px}
 .duel h3{font-size:24px;color:var(--gold);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -149,7 +152,7 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
   <div class="hero">
     <h1>Subasta Futbolera</h1>
     <p class="muted">Puja a ciegas por jugadores reales. ¿Leyenda o troll? Solo lo sabrás cuando sea tuyo.</p>
-    <p class="muted" style="font-size:12px">Versión 5 · conexión por servidor</p>
+    <p class="muted" style="font-size:12px">Versión 6 · conexión por servidor</p>
   </div>
   <div class="card" style="max-width:760px;margin:0 auto 16px">
     <label class="muted">Tu nombre de mánager</label>
@@ -195,7 +198,7 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
 <section id="auction" class="hidden">
   <div class="row" style="justify-content:space-between;margin-bottom:8px">
     <h2 style="font-size:32px">⚽ Subasta Futbolera <span class="muted" style="font-size:20px">· Sala <span id="acode"></span></span></h2>
-    <div class="money" id="mybudget"></div>
+    <div class="row"><span id="pausebtn"></span><div class="money" id="mybudget"></div></div>
   </div>
   <div class="posbar" id="posbar"></div>
   <div class="agrid">
@@ -246,6 +249,7 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
 </section>
 </div>
 
+<div id="pausebanner" class="hidden"><div class="pausebox"><div class="bebas" style="font-size:64px;color:var(--gold);line-height:1">⏸️ Juego en pausa</div><p class="muted" id="pausewho"></p><div id="pausehostbtn"></div></div></div>
 <div id="overlay" class="hidden"><div><div class="revtitle" id="revtitle"></div><div class="revs" id="revs"></div></div></div>
 
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
@@ -260,8 +264,8 @@ td,th{padding:6px;text-align:center;border-bottom:1px solid var(--line)}
 })();
 </script>
 
-<script src="players.js?v=5"></script>
-<script src="engine.js?v=5"></script>
+<script src="players.js?v=6"></script>
+<script src="engine.js?v=6"></script>
 <script>
 const TIER = {
   troll:{label:'🤡 TROLL',cls:'t-troll'}, legend:{label:'👑 LEYENDA',cls:'t-legend'},
@@ -479,6 +483,7 @@ const me = () => pl(PID);
 function render(){
   if(!S) return;
   if(!me()){ toast('Te han sacado de la sala'); resetNet(); S=null; sessionStorage.removeItem('sf_sess'); return show('home'); }
+  if(S.phase!=='auction'&&S.phase!=='reveal') $('pausebanner').classList.add('hidden');
   if(S.phase==='lobby'){ $('overlay').classList.add('hidden'); finalKey=null; lastReveal=null; return renderLobby(); }
   if(S.phase==='auction'||S.phase==='reveal'){ show('auction'); renderAuction(); renderReveal(); return; }
   if(S.phase==='voting'||S.phase==='finished'){ $('overlay').classList.add('hidden'); show('finished'); renderFinished(); }
@@ -502,8 +507,20 @@ function renderLobby(){
   $('lwait').textContent = host ? (S.players.length<2?'Esperando a otro mánager (o añade un bot para probar)…':'¡Listo cuando quieras! (máx. 4 mánagers)') : 'Esperando a que el anfitrión empiece…';
 }
 
+function renderPause(){
+  const inGame = S.phase==='auction'||S.phase==='reveal';
+  const host = S.hostId===PID;
+  $('pausebtn').innerHTML = inGame&&host
+    ? (S.paused ? `<button class="gold" onclick="act({type:'resume'})">▶️ Reanudar</button>` : `<button onclick="act({type:'pause'})">⏸️ Pausar</button>`)
+    : '';
+  $('pausebanner').classList.toggle('hidden', !(inGame && S.paused));
+  $('pausewho').textContent = host ? 'Pulsa "Reanudar" cuando estéis listos.' : 'Esperando a que el anfitrión lo reanude…';
+  $('pausehostbtn').innerHTML = host&&S.paused ? `<button class="gold" style="font-size:20px;padding:14px 28px" onclick="act({type:'resume'})">▶️ Reanudar</button>` : '';
+}
+
 function renderAuction(){
   const m = me();
+  renderPause();
   $('acode').textContent=S.code;
   $('mybudget').innerHTML=`💰 ${m.budget}M <span class="muted" style="font-size:16px">disponibles</span>`;
   $('posbar').innerHTML=S.positions.map((p,i)=>`<span class="${i<S.posIdx?'done':i===S.posIdx?'now':''}">${p.key}</span>`).join('');
@@ -582,9 +599,9 @@ function renderReveal(){
 // timer
 function tick(){
   if(S && S.phase==='auction' && S.cur){
-    const left=Math.max(0,S.deadline-(Date.now()+offset));
+    const left=Math.max(0,S.deadline-(S.paused?S.paused.at:(Date.now()+offset)));
     $('timerbar').style.width=Math.min(100,left/150)+'%';
-    $('timertxt').textContent=`⏱️ ${(left/1000).toFixed(1)} s`;
+    $('timertxt').textContent=S.paused?`⏸️ En pausa (${(left/1000).toFixed(1)} s)`:`⏱️ ${(left/1000).toFixed(1)} s`;
   } else if($('timerbar')){ $('timerbar').style.width='0%'; $('timertxt').textContent=''; }
   requestAnimationFrame(tick);
 }

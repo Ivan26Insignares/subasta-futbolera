@@ -72,6 +72,7 @@ function publicState(r, pid) {
     })) : [],
     cur: r.cur ? { id: r.cur.id, pos: r.cur.data.pos, nat: r.cur.data.nat, attr: r.cur.data.attr, base: r.cur.base, num: r.lots[curPos(r)].indexOf(r.cur) + 1 } : null,
     highBid: r.highBid, highBidder: r.highBidder, deadline: r.deadline, passes: [...r.passes],
+    paused: r.paused ? { at: r.paused.at, left: r.paused.left } : null,
     reveal: r.reveal, log: r.log.slice(-25), results: r.results,
     votes: r.votes || null, tally: (r.phase === 'voting' && r.votes) ? tallyVotes(r) : null,
   };
@@ -84,14 +85,46 @@ function broadcast(r) {
   }
 }
 
+function setRoomTimer(r, fn, ms) {
+  if (r.timer) clearT(r.timer);
+  r.timerFn = fn; r.timerAt = Date.now() + ms;
+  r.timer = setT(() => { r.timer = null; r.timerFn = null; fn(); }, ms);
+}
+
 function clearTimers(r) {
   if (r.timer) clearT(r.timer);
-  r.timer = null;
+  r.timer = null; r.timerFn = null;
   r.botTimers.forEach(clearT);
   r.botTimers = [];
 }
 
 // ---------- subasta ----------
+function pauseGame(r) {
+  const left = r.timerFn ? Math.max(0, r.timerAt - Date.now()) : null;
+  r.paused = { at: Date.now(), fn: r.timerFn, left };
+  if (r.timer) clearT(r.timer);
+  r.timer = null;
+  r.botTimers.forEach(clearT); r.botTimers = [];
+  log(r, '⏸️ El anfitrión ha pausado el juego.');
+  broadcast(r);
+}
+
+function resumeGame(r) {
+  const pz = r.paused;
+  r.paused = null;
+  const pausedFor = Date.now() - pz.at;
+  if (r.phase === 'auction' && r.cur) {
+    r.deadline = Math.max(r.deadline + pausedFor, Date.now() + 3000); // al menos 3 s para reaccionar
+    scheduleEnd(r);
+    scheduleBots(r);
+  } else if (pz.fn) {
+    setRoomTimer(r, pz.fn, pz.left);
+  }
+  log(r, '▶️ ¡Se reanuda el juego!');
+  broadcast(r);
+  if (r.phase === 'auction') checkAllPassed(r);
+}
+
 function startGame(r) {
   r.posIdx = 0; r.results = null; r.reveal = null; r.log = [];
   for (const p of r.players) { p.budget = BUDGET; p.team = {}; }
@@ -140,7 +173,7 @@ function nextLot(r) {
     r.phase = 'reveal';
     r.reveal = { id: uid(), kind: 'forced', items };
     broadcast(r);
-    r.timer = setT(() => { r.phase = 'auction'; r.posIdx++; nextLot(r); }, REVEAL_TIME + 1000);
+    setRoomTimer(r, () => { r.phase = 'auction'; r.posIdx++; nextLot(r); }, REVEAL_TIME + 1000);
     return;
   }
 
@@ -156,8 +189,8 @@ function nextLot(r) {
 }
 
 function scheduleEnd(r) {
-  if (r.timer) clearT(r.timer);
-  r.timer = setT(() => endLot(r), Math.max(0, r.deadline - Date.now()));
+  if (r.paused) return;
+  setRoomTimer(r, () => endLot(r), Math.max(0, r.deadline - Date.now()));
 }
 
 function sell(r, l, p, price) {
@@ -183,7 +216,7 @@ function endLot(r) {
   }
   r.phase = 'reveal';
   broadcast(r);
-  r.timer = setT(() => nextLot(r), REVEAL_TIME);
+  setRoomTimer(r, () => nextLot(r), REVEAL_TIME);
 }
 
 function eligible(r, p) {
@@ -194,6 +227,7 @@ function eligible(r, p) {
 }
 
 function checkAllPassed(r) {
+  if (r.paused) return;
   if (r.phase !== 'auction' || !r.cur) return;
   const waiting = r.players.filter((p) => p.id !== r.highBidder && eligible(r, p) && !r.passes.has(p.id) && (p.bot || isOnline(r, p.id)));
   if (waiting.length === 0) {
@@ -205,6 +239,7 @@ function checkAllPassed(r) {
 }
 
 function doBid(r, p, amount) {
+  if (r.paused) return 'El juego está en pausa';
   if (r.phase !== 'auction' || !r.cur) return 'No hay lote activo';
   amount = Math.floor(Number(amount));
   if (!Number.isFinite(amount)) return 'Cantidad inválida';
@@ -225,6 +260,7 @@ function doBid(r, p, amount) {
 }
 
 function doPass(r, p) {
+  if (r.paused) return 'El juego está en pausa';
   if (r.phase !== 'auction' || !r.cur) return 'No hay lote activo';
   r.passes.add(p.id);
   broadcast(r);
@@ -353,9 +389,20 @@ function handleAction(r, pid, b) {
       else if (r.phase !== 'voting') err = 'No hay votación abierta';
       else closeVoting(r);
       break;
+    case 'pause':
+      if (!host) err = 'Solo el anfitrión puede pausar';
+      else if (r.phase !== 'auction' && r.phase !== 'reveal') err = 'Solo se puede pausar durante la subasta';
+      else if (r.paused) err = 'Ya está en pausa';
+      else pauseGame(r);
+      break;
+    case 'resume':
+      if (!host) err = 'Solo el anfitrión puede reanudar';
+      else if (!r.paused) err = 'El juego no está en pausa';
+      else resumeGame(r);
+      break;
     case 'restart':
       if (!host) err = 'Solo el anfitrión';
-      else { clearTimers(r); r.phase = 'lobby'; r.results = null; r.votes = null; r.reveal = null; r.cur = null; r.posIdx = 0; for (const x of r.players) { x.team = {}; x.budget = BUDGET; } broadcast(r); }
+      else { clearTimers(r); r.phase = 'lobby'; r.results = null; r.votes = null; r.paused = null; r.reveal = null; r.cur = null; r.posIdx = 0; for (const x of r.players) { x.team = {}; x.budget = BUDGET; } broadcast(r); }
       break;
     default: err = 'Acción desconocida';
   }
