@@ -69,7 +69,7 @@ function publicState(r, pid) {
       id: l.id, status: l.status, owner: l.owner, price: l.price, base: l.base,
       info: (l.status === 'sold' || l.status === 'unsold' || l.status === 'discarded') ? revealData(l.data) : null,
     })) : [],
-    cur: r.cur ? { id: r.cur.id, pos: r.cur.data.pos, base: r.cur.base, num: r.lots[curPos(r)].indexOf(r.cur) + 1 } : null,
+    cur: r.cur ? { id: r.cur.id, pos: r.cur.data.pos, nat: r.cur.data.nat, attr: r.cur.data.attr, base: r.cur.base, num: r.lots[curPos(r)].indexOf(r.cur) + 1 } : null,
     highBid: r.highBid, highBidder: r.highBidder, deadline: r.deadline, passes: [...r.passes],
     reveal: r.reveal, log: r.log.slice(-25), results: r.results,
   };

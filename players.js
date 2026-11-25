@@ -197,6 +197,21 @@ for (const [pos, tiers] of Object.entries(EXTRA)) {
   }
 }
 
+// ---------- Característica principal (la única pista que se ve al pujar, junto a la nacionalidad) ----------
+const ATTR_NAMES = { R: 'RITMO', T: 'TIRO', P: 'PASE', G: 'REGATE', D: 'DEFENSA', F: 'FÍSICO' };
+const ATTR_BY_POS = { POR: 'D', LD: 'R', LI: 'R', DFD: 'D', DFI: 'D', MCD: 'D', MC: 'P', MCO: 'P', EI: 'G', ED: 'G', DC: 'T' };
+const ATTR = {
+  R: ['Jesús Navas', 'Kaká', 'Jairzinho', 'Francisco Gento', 'Cafu', 'Kylian Mbappé', 'Raheem Sterling', 'Rafael Leão', 'Marcus Rashford', 'Sadio Mané', 'Raphinha', 'Leroy Sané', 'Éder Militão', 'Raphaël Varane', 'Patrice Evra', 'Fabio Grosso', 'Nico Williams', 'Pedro Rodríguez', 'André Schürrle', 'Kingsley Coman', 'Marc Overmars', 'Ludovic Giuly', 'Lucas Vázquez', 'Fernando Torres', 'Bebé', 'Royston Drenthe', 'Gabriel Obertan', 'Cristian Tello', 'Jesé Rodríguez', 'Adama Traoré', 'Daniel James', 'Ryan Babel', 'Shaun Wright-Phillips', 'Theo Walcott', 'Ali Dia', 'Iñaki Williams', 'Thierry Henry', 'Óscar de Marcos'],
+  T: ['Cristiano Ronaldo', 'Pelé', 'Zico', 'Hristo Stoichkov', 'Pavel Nedvěd', 'Rivaldo', 'Roberto Carlos', 'Ronald Koeman', 'Steven Gerrard', 'Frank Lampard', 'Bobby Charlton', 'Thomas Müller', 'Son Heung-min', 'Mohamed Salah', 'Marcos Senna', 'Vassilis Tsiartas', 'Paulo Dybala', 'Lars Ricken', 'Divock Origi', 'Mikel Oyarzabal', 'Luis García', 'Vladimír Šmicer', 'Ole Gunnar Solskjær', 'Miroslav Klose', 'David Luiz', 'Ross Barkley', 'Kevin-Prince Boateng', 'Philippe Coutinho', 'Andriy Yarmolenko', 'Nicklas Bendtner', 'Mario Balotelli', 'Álvaro Morata', 'Afonso Alves', 'Federico Macheda', 'Rubén Castro', 'Jorge Molina'],
+  P: ['Manuel Neuer', 'Marc-André ter Stegen', 'Ederson', 'Alisson Becker', 'Víctor Valdés', 'Kepa Arrizabalaga', 'Dani Alves', 'Trent Alexander-Arnold', 'Joshua Kimmich', 'Kieran Trippier', 'Franz Beckenbauer', 'Mats Hummels', 'Aymeric Laporte', 'Alessandro Bastoni', 'Leonardo Bonucci', 'David Alaba', 'Federico Dimarco', 'Raphaël Guerreiro', 'Rafael Márquez', 'Sergio Busquets', 'Fernando Redondo', 'Rodri', 'Xabi Alonso', 'Martín Zubimendi', 'Marco Verratti', 'Jorginho', 'Enzo Fernández', 'Alex Song', 'Danny Drinkwater', 'Theodoros Zagorakis', 'Michel Platini', 'Juan Román Riquelme', 'Francesco Totti', 'David Beckham', 'Michael Laudrup', 'Hakim Ziyech', 'Andreas Pereira', 'Sergi Roberto'],
+  G: ['Lionel Messi', 'Ronaldinho', 'Neymar', 'Diego Maradona', 'Johan Cruyff', 'Zinedine Zidane', 'Roberto Baggio', 'Ronaldo Nazário', 'Garrincha', 'Luís Figo', 'Arjen Robben', 'Stanley Matthews', 'Raymond Kopa', 'Bruno Conti', 'George Best', 'Ryan Giggs', 'Andrés Iniesta', 'Isco', 'Jamal Musiala', 'João Cancelo', 'Thiago Alcântara', 'Mario Götze', 'Dani Olmo', 'Ángel Di María', 'Nani', 'Ricardo Quaresma', 'Mauro Camoranesi', 'Stelios Giannakopoulos', 'Steve McManaman', 'Julian Draxler', 'René Higuita', 'Jorge Campos', 'Denis Suárez', 'Arda Turan', 'Kerlon', 'Freddy Adu', 'Ravel Morrison', 'Alen Halilović', 'Marko Marin', 'Bojan Krkić', 'Giovani dos Santos', 'Hachim Mastour', 'Antony', 'Nicolas Pépé', 'Jadon Sancho', 'Óscar Trejo', 'Brahim Díaz'],
+  D: ['Philipp Lahm', 'Aaron Wan-Bissaka', 'Jules Koundé', 'Juanfran Torres', 'Dani Carvajal', 'Álvaro Arbeloa', 'Gonzalo Montiel', 'Benjamin Pavard', 'Filipe Luís', 'Lucas Hernández', 'Joan Capdevila', 'Morgan Schneiderlin'],
+  F: ['Peter Schmeichel', 'Thibaut Courtois', 'Oliver Kahn', 'Javier Zanetti', 'Reece James', 'Phil Jones', 'Kurt Zouma', 'Chris Smalling', 'Yerry Mina', 'Harry Maguire', 'Mamadou Sakho', 'Eric Bailly', 'Antonio Rüdiger', 'Ronald Araújo', 'Matthijs de Ligt', 'Kalidou Koulibaly', 'Virgil van Dijk', 'Giorgio Chiellini', 'Marcel Desailly', 'Nemanja Vidić', 'Marco Materazzi', 'Marc Cucurella', "N'Golo Kanté", 'Aurélien Tchouaméni', 'Patrick Vieira', 'Lothar Matthäus', 'Frank Rijkaard', 'Roy Keane', 'Edgar Davids', 'Johan Neeskens', 'Gennaro Gattuso', 'Javi Martínez', 'Sami Khedira', 'Fred', 'Tiémoué Bakayoko', 'Joey Barton', 'Gary Medel', 'Victor Wanyama', 'Marouane Fellaini', 'Geoffrey Kondogbia', 'Anderson', 'Jack Rodwell', 'Federico Valverde', 'Nicolò Barella', 'Saúl Ñíguez', 'Mikel Merino', 'Rodrigo De Paul', 'Blaise Matuidi', 'Simone Perrotta', 'Christoph Kramer', 'Jude Bellingham', 'Renato Sanches', 'Ji-sung Park', 'Dirk Kuyt', 'Erling Haaland', 'Zlatan Ibrahimović', 'Éder', 'Angelos Charisteas', 'Olivier Giroud', 'Fernando Llorente', 'Luca Toni', 'Joselu', 'Emile Heskey', 'Andy Carroll', 'Peter Crouch', 'Carlos Kaiser', 'Cristhian Stuani', 'Borja Iglesias', 'Chimy Ávila', 'Kike García'],
+};
+const ATTR_OF = {};
+for (const [k, names] of Object.entries(ATTR)) for (const n of names) ATTR_OF[n] = k;
+for (const pos of Object.keys(PLAYERS)) for (const p of PLAYERS[pos]) p.attr = ATTR_NAMES[ATTR_OF[p.name] || ATTR_BY_POS[pos]];
+
 const PRICE_RANGES = {
   troll: [35, 170],
   normal: [15, 95],
@@ -205,7 +220,7 @@ const PRICE_RANGES = {
   legend: [45, 230],
 };
 
-const DATA = { POSITIONS, PLAYERS, PRICE_RANGES };
+const DATA = { POSITIONS, PLAYERS, PRICE_RANGES, ATTR };
 if (typeof module !== 'undefined' && module.exports) module.exports = DATA;
 else root.SF_DATA = DATA;
 })(typeof window !== 'undefined' ? window : globalThis);
